@@ -40,22 +40,43 @@ type Client interface {
 type ViewModel struct {
 	mu            sync.RWMutex
 	client        Client
+	store         SessionStore
 	apiKey        string
 	models        []string
 	selectedModel string
-	messages      []Message
+	sessions      []Session
+	currentID     string
 	lastError     string
 	isSending     bool
+	cancel        context.CancelFunc
 }
 
-// NewViewModel constructs a chat view model with the provided client and allowed models.
-func NewViewModel(client Client, models []string) *ViewModel {
+// NewViewModel constructs a chat view model with the provided client, allowed models, and storage backend.
+func NewViewModel(client Client, models []string, store SessionStore) *ViewModel {
 	vm := &ViewModel{
 		client: client,
+		store:  store,
 		models: append([]string(nil), models...),
 	}
 	if len(models) > 0 {
 		vm.selectedModel = models[0]
+	}
+	if store != nil {
+		if sessions, err := store.LoadSessions(); err == nil {
+			for i := range sessions {
+				if sessions[i].ID == "" {
+					sessions[i].ID = newSessionID()
+				}
+				sessions[i].Title = ensureTitle(sessions[i].Title)
+			}
+			vm.sessions = cloneSessions(sessions)
+		}
+	}
+	if len(vm.sessions) == 0 {
+		vm.currentID = newSessionID()
+		vm.sessions = []Session{{ID: vm.currentID, Title: defaultSessionTitle}}
+	} else {
+		vm.currentID = vm.sessions[0].ID
 	}
 	return vm
 }
@@ -100,13 +121,53 @@ func (vm *ViewModel) SetAPIKey(key string) {
 	vm.apiKey = strings.TrimSpace(key)
 }
 
-// Messages returns a copy of the conversation history.
+// Sessions returns summaries of the persisted chat sessions.
+func (vm *ViewModel) Sessions() []SessionSummary {
+	vm.mu.RLock()
+	defer vm.mu.RUnlock()
+	summaries := make([]SessionSummary, len(vm.sessions))
+	for i, session := range vm.sessions {
+		summaries[i] = SessionSummary{ID: session.ID, Title: ensureTitle(session.Title)}
+	}
+	return summaries
+}
+
+// CurrentSessionID reports the active session identifier.
+func (vm *ViewModel) CurrentSessionID() string {
+	vm.mu.RLock()
+	defer vm.mu.RUnlock()
+	return vm.currentID
+}
+
+// CurrentSessionTitle returns the active session title.
+func (vm *ViewModel) CurrentSessionTitle() string {
+	vm.mu.RLock()
+	defer vm.mu.RUnlock()
+	if session := vm.sessionByIDLocked(vm.currentID); session != nil {
+		return ensureTitle(session.Title)
+	}
+	return defaultSessionTitle
+}
+
+// SelectSession switches the active session when the identifier exists.
+func (vm *ViewModel) SelectSession(id string) {
+	vm.mu.Lock()
+	defer vm.mu.Unlock()
+	if session := vm.sessionByIDLocked(id); session != nil {
+		vm.currentID = session.ID
+	}
+}
+
+// Messages returns a copy of the active conversation history.
 func (vm *ViewModel) Messages() []Message {
 	vm.mu.RLock()
 	defer vm.mu.RUnlock()
-	out := make([]Message, len(vm.messages))
-	copy(out, vm.messages)
-	return out
+	if session := vm.sessionByIDLocked(vm.currentID); session != nil {
+		out := make([]Message, len(session.Messages))
+		copy(out, session.Messages)
+		return out
+	}
+	return nil
 }
 
 // LastError exposes the most recent error message.
@@ -130,6 +191,18 @@ func (vm *ViewModel) IsSending() bool {
 	return vm.isSending
 }
 
+// Cancel aborts any in-flight send operation.
+func (vm *ViewModel) Cancel() {
+	vm.mu.Lock()
+	cancel := vm.cancel
+	vm.cancel = nil
+	vm.isSending = false
+	vm.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+}
+
 // Send validates input, appends the user message, and invokes the client for a response.
 func (vm *ViewModel) Send(ctx context.Context, content string) error {
 	trimmed := strings.TrimSpace(content)
@@ -144,23 +217,73 @@ func (vm *ViewModel) Send(ctx context.Context, content string) error {
 	}
 	apiKey := vm.apiKey
 	model := vm.selectedModel
-	history := append([]Message(nil), vm.messages...)
+	if vm.currentID == "" {
+		vm.currentID = newSessionID()
+		vm.sessions = append(vm.sessions, Session{ID: vm.currentID, Title: defaultSessionTitle})
+	}
+	session := vm.ensureCurrentSessionLocked()
 	userMsg := Message{Role: RoleUser, Content: trimmed}
-	history = append(history, userMsg)
-	vm.messages = append(vm.messages, userMsg)
+	session.Messages = append(session.Messages, userMsg)
+	vm.updateSessionTitleLocked(session)
+	vm.saveSessionsLocked()
+	history := make([]Message, len(session.Messages))
+	copy(history, session.Messages)
 	vm.lastError = ""
 	vm.isSending = true
+	if vm.cancel != nil {
+		vm.cancel()
+	}
+	sendCtx, cancel := context.WithCancel(ctx)
+	vm.cancel = cancel
 	vm.mu.Unlock()
 
-	resp, err := vm.client.SendChat(ctx, apiKey, model, history)
+	resp, err := vm.client.SendChat(sendCtx, apiKey, model, history)
 
 	vm.mu.Lock()
 	defer vm.mu.Unlock()
 	vm.isSending = false
+	vm.cancel = nil
 	if err != nil {
-		vm.lastError = err.Error()
+		if errors.Is(err, context.Canceled) {
+			vm.lastError = ""
+		} else {
+			vm.lastError = err.Error()
+		}
+		vm.saveSessionsLocked()
 		return err
 	}
-	vm.messages = append(vm.messages, resp)
+	session = vm.ensureCurrentSessionLocked()
+	session.Messages = append(session.Messages, resp)
+	vm.updateSessionTitleLocked(session)
+	vm.saveSessionsLocked()
 	return nil
+}
+
+func (vm *ViewModel) sessionByIDLocked(id string) *Session {
+	for i := range vm.sessions {
+		if vm.sessions[i].ID == id {
+			return &vm.sessions[i]
+		}
+	}
+	return nil
+}
+
+func (vm *ViewModel) ensureCurrentSessionLocked() *Session {
+	if session := vm.sessionByIDLocked(vm.currentID); session != nil {
+		return session
+	}
+	vm.currentID = newSessionID()
+	vm.sessions = append(vm.sessions, Session{ID: vm.currentID, Title: defaultSessionTitle})
+	return &vm.sessions[len(vm.sessions)-1]
+}
+
+func (vm *ViewModel) updateSessionTitleLocked(session *Session) {
+	session.Title = ensureTitle(deriveTitle(session.Messages))
+}
+
+func (vm *ViewModel) saveSessionsLocked() {
+	if vm.store == nil {
+		return
+	}
+	_ = vm.store.SaveSessions(cloneSessions(vm.sessions))
 }

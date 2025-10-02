@@ -2,7 +2,7 @@ package ui
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"strings"
 
 	"fyne.io/fyne/v2"
@@ -19,8 +19,13 @@ type ChatViewModel interface {
 	SelectModel(string)
 	APIKey() string
 	SetAPIKey(string)
+	Sessions() []chat.SessionSummary
+	CurrentSessionID() string
+	CurrentSessionTitle() string
+	SelectSession(string)
 	Messages() []chat.Message
 	Send(ctx context.Context, content string) error
+	Cancel()
 	LastError() string
 	ClearError()
 	IsSending() bool
@@ -28,13 +33,14 @@ type ChatViewModel interface {
 
 // AppView bundles the root widget and key controls for easy testing.
 type AppView struct {
-	Root        fyne.CanvasObject
-	ModelSelect *widget.Select
-	APIKeyEntry *widget.Entry
-	InputEntry  *widget.Entry
-	SendButton  *widget.Button
-	ChatOutput  *widget.RichText
-	ErrorLabel  *widget.Label
+	Root         fyne.CanvasObject
+	SessionsList *widget.List
+	ModelSelect  *widget.Select
+	APIKeyEntry  *widget.Entry
+	InputEntry   *widget.Entry
+	SendButton   *widget.Button
+	ChatOutput   *widget.RichText
+	ErrorLabel   *widget.Label
 }
 
 // BuildAppUI assembles the Fyne widgets and binds them to the supplied view model.
@@ -76,30 +82,102 @@ func BuildAppUI(vm ChatViewModel) *AppView {
 	transcriptContainer := container.NewVScroll(chatOutput)
 	transcriptContainer.SetMinSize(fyne.NewSize(400, 300))
 
+	var sessions []chat.SessionSummary
+
+	sessionList := widget.NewList(
+		func() int { return len(sessions) },
+		func() fyne.CanvasObject { return widget.NewLabel("") },
+		func(id widget.ListItemID, item fyne.CanvasObject) {
+			label := item.(*widget.Label)
+			if id < 0 || id >= len(sessions) {
+				label.SetText("")
+				return
+			}
+			summary := sessions[id]
+			label.SetText(summary.Title)
+			if summary.ID == vm.CurrentSessionID() {
+				label.TextStyle = fyne.TextStyle{Bold: true}
+			} else {
+				label.TextStyle = fyne.TextStyle{}
+			}
+		},
+	)
+	view.SessionsList = sessionList
+
+	refreshSessions := func(selectCurrent bool) {
+		sessions = vm.Sessions()
+		sessionList.Refresh()
+		if selectCurrent {
+			currentID := vm.CurrentSessionID()
+			for idx, summary := range sessions {
+				if summary.ID == currentID {
+					sessionList.Select(idx)
+					break
+				}
+			}
+		}
+	}
+
 	refreshTranscript := func() {
 		renderTranscript(chatOutput, vm.Messages())
 	}
 	refreshTranscript()
+	refreshSessions(true)
 
-	send := func() {
+	sessionList.OnSelected = func(id widget.ListItemID) {
+		if id < 0 || id >= len(sessions) {
+			return
+		}
+		vm.SelectSession(sessions[id].ID)
+		refreshTranscript()
+		refreshSessions(true)
+	}
+
+	var send func()
+	var setSending func(bool)
+
+	setSending = func(sending bool) {
+		if sending {
+			inputEntry.Disable()
+			sendButton.SetText("Cancel")
+			sendButton.OnTapped = func() {
+				vm.Cancel()
+				setSending(false)
+				refreshTranscript()
+				refreshSessions(true)
+			}
+		} else {
+			inputEntry.Enable()
+			sendButton.SetText("Send")
+			sendButton.OnTapped = send
+		}
+		sendButton.Refresh()
+	}
+
+	send = func() {
 		content := strings.TrimSpace(inputEntry.Text)
 		if content == "" {
 			return
 		}
-		view.ErrorLabel.SetText("")
-		view.SendButton.Disable()
+		errorLabel.SetText("")
+		setSending(true)
 		go func(text string) {
 			err := vm.Send(context.Background(), text)
 			runOnMain(func() {
 				refreshTranscript()
+				refreshSessions(true)
 				if err != nil {
-					view.ErrorLabel.SetText(err.Error())
+					if errors.Is(err, context.Canceled) {
+						errorLabel.SetText("")
+					} else {
+						errorLabel.SetText(err.Error())
+					}
 				} else {
 					vm.ClearError()
-					view.ErrorLabel.SetText("")
-					view.InputEntry.SetText("")
+					errorLabel.SetText("")
+					inputEntry.SetText("")
 				}
-				view.SendButton.Enable()
+				setSending(false)
 			})
 		}(content)
 	}
@@ -122,11 +200,10 @@ func BuildAppUI(vm ChatViewModel) *AppView {
 
 	inputRow := container.NewBorder(nil, nil, nil, sendButton, inputEntry)
 
-	view.Root = container.NewBorder(updatedControls, container.NewVBox(errorLabel, inputRow), nil, nil, transcriptContainer)
+	right := container.NewBorder(updatedControls, container.NewVBox(errorLabel, inputRow), nil, nil, transcriptContainer)
+	view.Root = container.NewHSplit(sessionList, right)
 
-	if vm.IsSending() {
-		sendButton.Disable()
-	}
+	setSending(vm.IsSending())
 
 	return view
 }
@@ -159,7 +236,7 @@ func buildTranscript(messages []chat.Message) string {
 		case chat.RoleSystem:
 			b.WriteString("**System:**\n")
 		default:
-			b.WriteString(fmt.Sprintf("**%s:**\n", strings.ToUpper(string(msg.Role))))
+			b.WriteString("**" + strings.ToUpper(string(msg.Role)) + ":**\n")
 		}
 		b.WriteString(msg.Content)
 		b.WriteString("\n\n")

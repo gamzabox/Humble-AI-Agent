@@ -9,3 +9,8 @@
 
 # Chat History and Canceling Tasks
 
+- [x] Capture detailed history and cancellation requirements in REQUIREMENTS.md.
+- [x] Specify failing tests for history persistence, session selection, and cancel/send interaction.
+- [x] Implement persistent session storage and list UI to satisfy the tests.
+- [x] Wire cancellation flow, button toggling, and input state management to make tests pass.
+- [x] Run gofmt and go test ./... for verification.

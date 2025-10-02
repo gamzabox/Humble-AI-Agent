@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 
 	"fyne.io/fyne/v2"
@@ -17,7 +18,8 @@ func main() {
 
 	models := []string{"gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"}
 	client := chat.NewOpenAIClient(nil)
-	viewModel := chat.NewViewModel(client, models)
+	storePath := filepath.Join("humble-ai-agent", "sessions.json")
+	viewModel := chat.NewViewModel(client, models, chat.NewFileSessionStore(storePath))
 
 	if apiKey := strings.TrimSpace(os.Getenv("OPENAI_API_KEY")); apiKey != "" {
 		viewModel.SetAPIKey(apiKey)
