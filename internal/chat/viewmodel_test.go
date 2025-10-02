@@ -141,22 +141,27 @@ func TestNewViewModelDefaultsToFirstModel(t *testing.T) {
 	}
 }
 
-func TestViewModelLoadsSessionsFromStore(t *testing.T) {
-	session := Session{ID: "s1", Title: "Stored", Messages: []Message{{Role: RoleUser, Content: "hi"}}}
+func TestNewViewModelStartsWithFreshSession(t *testing.T) {
+	existing := Session{ID: "s1", Title: "Legacy", Messages: []Message{{Role: RoleUser, Content: "hi"}}}
 	client := &fakeClient{}
-	store := newFakeStore(session)
+	store := newFakeStore(existing)
 	vm := NewViewModel(client, []string{"gpt-4"}, store)
 
 	sessions := vm.Sessions()
-	if len(sessions) != 1 {
-		t.Fatalf("expected 1 session, got %d", len(sessions))
+	if len(sessions) != 2 {
+		t.Fatalf("expected new session plus stored, got %d", len(sessions))
 	}
-	if sessions[0].ID != "s1" || sessions[0].Title != "Stored" {
-		t.Fatalf("unexpected session summary: %+v", sessions[0])
+	if sessions[0].Title != "New Chat" {
+		t.Fatalf("expected first session to be new chat, got %q", sessions[0].Title)
 	}
-	msgs := vm.Messages()
-	if len(msgs) != 1 || msgs[0].Content != "hi" {
-		t.Fatalf("expected messages from stored session, got %+v", msgs)
+	if sessions[1].ID != "s1" {
+		t.Fatalf("expected stored session to remain available")
+	}
+	if vm.CurrentSessionID() == "s1" {
+		t.Fatalf("expected current session to be freshly created")
+	}
+	if len(vm.Messages()) != 0 {
+		t.Fatalf("expected fresh session to start empty")
 	}
 }
 
@@ -189,14 +194,44 @@ func TestSendUpdatesTitleAndPersistsSessions(t *testing.T) {
 	}
 
 	sessions := vm.Sessions()
-	if len(sessions) != 1 {
-		t.Fatalf("expected one session after send")
+	if len(sessions) == 0 {
+		t.Fatalf("expected sessions to exist")
 	}
 	if sessions[0].Title != "First question" {
 		t.Fatalf("expected title to update from first user message, got %q", sessions[0].Title)
 	}
 	if store.saveCalls == 0 {
 		t.Fatalf("expected sessions to be saved")
+	}
+}
+
+func TestStartNewSessionClearsStateAndPersists(t *testing.T) {
+	client := &fakeClient{response: Message{Role: RoleAssistant, Content: "ok"}}
+	store := newFakeStore()
+	vm := NewViewModel(client, []string{"gpt-4"}, store)
+	vm.SetAPIKey("sk")
+
+	if err := vm.Send(context.Background(), "hello"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	prevSaves := store.saveCalls
+	prevSessionID := vm.CurrentSessionID()
+
+	vm.StartNewSession()
+
+	if vm.CurrentSessionID() == prevSessionID {
+		t.Fatalf("expected a new current session after starting new one")
+	}
+	if len(vm.Messages()) != 0 {
+		t.Fatalf("expected new session to have no messages")
+	}
+	if store.saveCalls <= prevSaves {
+		t.Fatalf("expected sessions to be persisted when starting new session")
+	}
+
+	sessions := vm.Sessions()
+	if len(sessions) < 2 {
+		t.Fatalf("expected previous session to remain alongside new one")
 	}
 }
 

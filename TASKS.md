@@ -14,3 +14,8 @@
 - [x] Implement persistent session storage and list UI to satisfy the tests.
 - [x] Wire cancellation flow, button toggling, and input state management to make tests pass.
 - [x] Run gofmt and go test ./... for verification.
+
+- [x] Ensure REQUIREMENTS.md reflects new session workflow.
+- [x] Add tests for fresh-session startup, new-session creation, and split sizing.
+- [x] Implement view-model and UI changes for new session button and defaults.
+- [x] Run gofmt and go test ./... after implementation.

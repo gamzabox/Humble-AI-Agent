@@ -10,6 +10,9 @@
 - Maintain the running conversation history during the app session so that new completions include prior exchanges.
 - Provide basic error feedback inside the UI when API calls fail or required inputs are missing.
 - Save chat history and show chat history title on left split view.
+- Provide a dedicated control to start a fresh chat session at any time.
+- Always begin application launch in a brand new session while keeping history accessible.
+- Size the split view so the session list occupies roughly 30% width by default while remaining resizable by the user.
 - Present the chat window as a horizontal split: the left pane lists saved conversation titles and the right pane shows the active chat transcript and controls.
 - Selecting a saved conversation must instantly replace the right pane with the stored transcript while keeping the current session state consistent.
 - Persist conversations to local storage so they remain available across application launches; titles should default to the first user message or "New Chat" when empty.

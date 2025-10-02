@@ -3,6 +3,8 @@ package ui
 import (
 	"context"
 	"errors"
+	"fmt"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -15,16 +17,19 @@ import (
 )
 
 type stubViewModel struct {
-	models       []string
-	selected     string
-	apiKey       string
-	sessions     []chat.SessionSummary
-	messages     map[string][]chat.Message
-	currentID    string
-	sendErr      error
-	sendInvoked  bool
-	cancelCalled bool
-	isSending    bool
+	models                []string
+	selected              string
+	apiKey                string
+	sessions              []chat.SessionSummary
+	messages              map[string][]chat.Message
+	currentID             string
+	sendErr               error
+	sendInvoked           bool
+	cancelCalled          bool
+	isSending             bool
+	startNewSessionCalled bool
+	lastNewID             string
+	nextID                int
 }
 
 func newStubViewModel() *stubViewModel {
@@ -42,6 +47,7 @@ func newStubViewModel() *stubViewModel {
 		sessions:  sessions,
 		messages:  messages,
 		currentID: sessions[0].ID,
+		nextID:    3,
 	}
 }
 
@@ -64,6 +70,16 @@ func (s *stubViewModel) CurrentSessionTitle() string {
 func (s *stubViewModel) CurrentSessionID() string { return s.currentID }
 func (s *stubViewModel) SelectSession(id string) {
 	s.currentID = id
+}
+func (s *stubViewModel) StartNewSession() string {
+	s.startNewSessionCalled = true
+	newID := fmt.Sprintf("s%d", s.nextID)
+	s.nextID++
+	s.sessions = append([]chat.SessionSummary{{ID: newID, Title: "New Chat"}}, s.sessions...)
+	s.messages[newID] = nil
+	s.currentID = newID
+	s.lastNewID = newID
+	return newID
 }
 func (s *stubViewModel) Messages() []chat.Message {
 	return append([]chat.Message(nil), s.messages[s.currentID]...)
@@ -187,7 +203,25 @@ func TestSessionsListPopulatedAndSelects(t *testing.T) {
 	}
 }
 
-func TestRootLayoutIsHorizontalSplit(t *testing.T) {
+func TestNewSessionButtonCreatesFreshSession(t *testing.T) {
+	app := test.NewApp()
+	defer app.Quit()
+
+	vm := newStubViewModel()
+	view := BuildAppUI(vm)
+
+	view.NewSessionButton.OnTapped()
+	waitFor(t, func() bool { return vm.startNewSessionCalled })
+
+	if vm.currentID != vm.lastNewID {
+		t.Fatalf("expected new session to be current")
+	}
+	if view.NewSessionButton.Text != "새 새션" {
+		t.Fatalf("expected button label to match requirement, got %s", view.NewSessionButton.Text)
+	}
+}
+
+func TestRootLayoutIsHorizontalSplitWithOffset(t *testing.T) {
 	app := test.NewApp()
 	defer app.Quit()
 
@@ -200,6 +234,9 @@ func TestRootLayoutIsHorizontalSplit(t *testing.T) {
 	}
 	if !split.Horizontal {
 		t.Fatalf("expected split to be horizontal")
+	}
+	if math.Abs(split.Offset-0.3) > 0.01 {
+		t.Fatalf("expected split offset near 0.3, got %f", split.Offset)
 	}
 }
 
@@ -246,7 +283,7 @@ func TestSendFailureReenablesInputAndShowsError(t *testing.T) {
 
 	view.InputEntry.SetText("hello")
 	view.SendButton.OnTapped()
-	waitFor(t, func() bool { return view.InputEntry.Disabled() == false })
+	waitFor(t, func() bool { return !view.InputEntry.Disabled() })
 
 	if view.SendButton.Text != "Send" {
 		t.Fatalf("expected button to reset to Send after failure")

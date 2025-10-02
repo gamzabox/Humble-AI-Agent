@@ -18,7 +18,8 @@ func main() {
 
 	models := []string{"gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"}
 	client := chat.NewOpenAIClient(nil)
-	storePath := filepath.Join("humble-ai-agent", "sessions.json")
+
+	storePath := defaultSessionPath()
 	viewModel := chat.NewViewModel(client, models, chat.NewFileSessionStore(storePath))
 
 	if apiKey := strings.TrimSpace(os.Getenv("OPENAI_API_KEY")); apiKey != "" {
@@ -30,4 +31,12 @@ func main() {
 	window.SetContent(view.Root)
 	window.Resize(fyne.NewSize(900, 640))
 	window.ShowAndRun()
+}
+
+func defaultSessionPath() string {
+	configDir, err := os.UserConfigDir()
+	if err != nil || configDir == "" {
+		return filepath.Join(".", ".humble-ai-agent", "sessions.json")
+	}
+	return filepath.Join(configDir, "humble-ai-agent", "sessions.json")
 }

@@ -72,12 +72,8 @@ func NewViewModel(client Client, models []string, store SessionStore) *ViewModel
 			vm.sessions = cloneSessions(sessions)
 		}
 	}
-	if len(vm.sessions) == 0 {
-		vm.currentID = newSessionID()
-		vm.sessions = []Session{{ID: vm.currentID, Title: defaultSessionTitle}}
-	} else {
-		vm.currentID = vm.sessions[0].ID
-	}
+	vm.startFreshSessionLocked()
+	vm.saveSessionsLocked()
 	return vm
 }
 
@@ -203,6 +199,23 @@ func (vm *ViewModel) Cancel() {
 	}
 }
 
+// StartNewSession creates and activates a blank conversation session.
+func (vm *ViewModel) StartNewSession() string {
+	vm.mu.Lock()
+	cancel := vm.cancel
+	vm.cancel = nil
+	vm.isSending = false
+	vm.lastError = ""
+	newSession := vm.startFreshSessionLocked()
+	vm.saveSessionsLocked()
+	id := newSession.ID
+	vm.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	return id
+}
+
 // Send validates input, appends the user message, and invokes the client for a response.
 func (vm *ViewModel) Send(ctx context.Context, content string) error {
 	trimmed := strings.TrimSpace(content)
@@ -218,8 +231,7 @@ func (vm *ViewModel) Send(ctx context.Context, content string) error {
 	apiKey := vm.apiKey
 	model := vm.selectedModel
 	if vm.currentID == "" {
-		vm.currentID = newSessionID()
-		vm.sessions = append(vm.sessions, Session{ID: vm.currentID, Title: defaultSessionTitle})
+		vm.startFreshSessionLocked()
 	}
 	session := vm.ensureCurrentSessionLocked()
 	userMsg := Message{Role: RoleUser, Content: trimmed}
@@ -272,13 +284,18 @@ func (vm *ViewModel) ensureCurrentSessionLocked() *Session {
 	if session := vm.sessionByIDLocked(vm.currentID); session != nil {
 		return session
 	}
-	vm.currentID = newSessionID()
-	vm.sessions = append(vm.sessions, Session{ID: vm.currentID, Title: defaultSessionTitle})
-	return &vm.sessions[len(vm.sessions)-1]
+	return vm.startFreshSessionLocked()
 }
 
 func (vm *ViewModel) updateSessionTitleLocked(session *Session) {
 	session.Title = ensureTitle(deriveTitle(session.Messages))
+}
+
+func (vm *ViewModel) startFreshSessionLocked() *Session {
+	newSession := Session{ID: newSessionID(), Title: defaultSessionTitle}
+	vm.sessions = append([]Session{newSession}, vm.sessions...)
+	vm.currentID = newSession.ID
+	return &vm.sessions[0]
 }
 
 func (vm *ViewModel) saveSessionsLocked() {

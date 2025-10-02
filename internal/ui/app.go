@@ -26,6 +26,7 @@ type ChatViewModel interface {
 	Messages() []chat.Message
 	Send(ctx context.Context, content string) error
 	Cancel()
+	StartNewSession() string
 	LastError() string
 	ClearError()
 	IsSending() bool
@@ -33,14 +34,15 @@ type ChatViewModel interface {
 
 // AppView bundles the root widget and key controls for easy testing.
 type AppView struct {
-	Root         fyne.CanvasObject
-	SessionsList *widget.List
-	ModelSelect  *widget.Select
-	APIKeyEntry  *widget.Entry
-	InputEntry   *widget.Entry
-	SendButton   *widget.Button
-	ChatOutput   *widget.RichText
-	ErrorLabel   *widget.Label
+	Root             fyne.CanvasObject
+	SessionsList     *widget.List
+	NewSessionButton *widget.Button
+	ModelSelect      *widget.Select
+	APIKeyEntry      *widget.Entry
+	InputEntry       *widget.Entry
+	SendButton       *widget.Button
+	ChatOutput       *widget.RichText
+	ErrorLabel       *widget.Label
 }
 
 // BuildAppUI assembles the Fyne widgets and binds them to the supplied view model.
@@ -69,14 +71,16 @@ func BuildAppUI(vm ChatViewModel) *AppView {
 	errorLabel.TextStyle = fyne.TextStyle{Italic: true}
 
 	sendButton := widget.NewButton("Send", nil)
+	newSessionButton := widget.NewButton("새 새션", nil)
 
 	view := &AppView{
-		ModelSelect: modelSelect,
-		APIKeyEntry: apiEntry,
-		InputEntry:  inputEntry,
-		SendButton:  sendButton,
-		ChatOutput:  chatOutput,
-		ErrorLabel:  errorLabel,
+		ModelSelect:      modelSelect,
+		APIKeyEntry:      apiEntry,
+		InputEntry:       inputEntry,
+		SendButton:       sendButton,
+		NewSessionButton: newSessionButton,
+		ChatOutput:       chatOutput,
+		ErrorLabel:       errorLabel,
 	}
 
 	transcriptContainer := container.NewVScroll(chatOutput)
@@ -154,6 +158,16 @@ func BuildAppUI(vm ChatViewModel) *AppView {
 		sendButton.Refresh()
 	}
 
+	newSessionButton.OnTapped = func() {
+		vm.ClearError()
+		errorLabel.SetText("")
+		vm.StartNewSession()
+		setSending(false)
+		inputEntry.SetText("")
+		refreshSessions(true)
+		refreshTranscript()
+	}
+
 	send = func() {
 		content := strings.TrimSpace(inputEntry.Text)
 		if content == "" {
@@ -200,8 +214,11 @@ func BuildAppUI(vm ChatViewModel) *AppView {
 
 	inputRow := container.NewBorder(nil, nil, nil, sendButton, inputEntry)
 
+	left := container.NewBorder(newSessionButton, nil, nil, nil, sessionList)
 	right := container.NewBorder(updatedControls, container.NewVBox(errorLabel, inputRow), nil, nil, transcriptContainer)
-	view.Root = container.NewHSplit(sessionList, right)
+	split := container.NewHSplit(left, right)
+	split.SetOffset(0.3)
+	view.Root = split
 
 	setSending(vm.IsSending())
 
