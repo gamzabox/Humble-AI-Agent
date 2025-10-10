@@ -38,6 +38,9 @@ class ChatController extends ChangeNotifier {
 
   StreamSubscription<String>? _sub;
   CancellationToken? _cancelToken;
+  String? _lastError;
+  String? get lastError => _lastError;
+  String? _lastFailedPrompt;
 
   ChatController({required this.storage, required this.client}) {
     // Ensure an initial session is available immediately for UI/tests
@@ -97,6 +100,7 @@ class ChatController extends ChangeNotifier {
   Future<void> send(String text) async {
     if (_sending || text.trim().isEmpty || _current == null || _activeModel == null) return;
     _sending = true;
+    _lastError = null;
     final cur = _current!;
 
     // Create pending user message but keep ability to rollback on cancel
@@ -130,7 +134,9 @@ class ChatController extends ChangeNotifier {
     }, onError: (e, st) {
       // Show error in status, rollback to pre-send state
       cur.messages.removeWhere((m) => m == placeholder || m == userMsg);
-      cur.messages.add(const ChatMessage(role: 'status', content: 'Error occurred'));
+      cur.messages.add(const ChatMessage(role: 'status', content: 'Network error.'));
+      _lastError = 'Network error.';
+      _lastFailedPrompt = text;
       _sending = false;
       notifyListeners();
     }, onDone: () async {
@@ -234,5 +240,22 @@ class ChatController extends ChangeNotifier {
       'selectedModelId': _activeModel?.id,
     };
     await storage.saveConfig(map);
+  }
+
+  Future<void> deleteSessionAt(int index) async {
+    if (index < 0 || index >= sessions.length) return;
+    final removed = sessions.removeAt(index);
+    if (identical(removed, _current)) {
+      _current = sessions.isNotEmpty ? sessions.first : null;
+    }
+    await _persistSessions();
+    notifyListeners();
+  }
+
+  Future<void> retryLast() async {
+    if (_lastFailedPrompt != null && !_sending) {
+      final prompt = _lastFailedPrompt!;
+      await send(prompt);
+    }
   }
 }

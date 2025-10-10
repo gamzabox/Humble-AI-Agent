@@ -17,7 +17,7 @@ import 'package:humble_ai_agent/controllers/chat_controller.dart';
 import 'package:humble_ai_agent/services/llm_client.dart';
 import 'package:humble_ai_agent/services/storage_service.dart';
 
-class _FakeLlmClient implements LlmClient {
+  class _FakeLlmClient implements LlmClient {
   final Duration tokenDelay;
   List<String> tokensToEmit;
   _FakeLlmClient({
@@ -47,7 +47,22 @@ class _FakeLlmClient implements LlmClient {
       yield t;
     }
   }
+
 }
+
+  class _FlakyLlmClient extends _FakeLlmClient {
+    bool failNext = true;
+    _FlakyLlmClient({super.tokenDelay, super.tokensToEmit});
+    @override
+    Stream<String> streamChat({required List<ChatTurn> turns, required LlmModel model, required CancellationToken cancel}) async* {
+      if (failNext) {
+        failNext = false;
+        yield* Stream<String>.error(Exception('network'));
+        return;
+      }
+      yield* super.streamChat(turns: turns, model: model, cancel: cancel);
+    }
+  }
 
 void main() {
   testWidgets('Send streams response and finalizes UI', (tester) async {
@@ -233,5 +248,113 @@ void main() {
     final cfg = await storage.loadConfig();
     expect((cfg['models'] as List).length, 2);
     expect(cfg['selectedModelId'], 'o2');
+  });
+
+  testWidgets('Assistant code block renders with highlight', (tester) async {
+    final tmpDir = await tester.runAsync(() => Directory.systemTemp.createTemp('humble_agent_test_'));
+    final storage = StorageService(baseDir: tmpDir?.path);
+    final client = _FakeLlmClient();
+    final controller = ChatController(storage: storage, client: client);
+    controller.setActiveModel(
+      const LlmModel(id: 'm1', provider: 'openai', model: 'gpt-test', apiKey: 'k'),
+    );
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: controller,
+        child: const MaterialApp(home: ChatPage()),
+      ),
+    );
+
+    // Inject assistant message containing code block
+    final cur = controller.current!;
+    cur.messages.add(const ChatMessage(role: 'assistant', content: '```dart\nvoid main() {}\n```'));
+    controller.selectSession(cur);
+    await tester.pump();
+
+    expect(find.byKey(const Key('code-block')), findsOneWidget);
+  });
+
+  testWidgets('Session list bolds selected and can delete sessions', (tester) async {
+    final tmpDir = await tester.runAsync(() => Directory.systemTemp.createTemp('humble_agent_test_'));
+    final storage = StorageService(baseDir: tmpDir?.path);
+    final client = _FakeLlmClient();
+    final controller = ChatController(storage: storage, client: client);
+    controller.setActiveModel(
+      const LlmModel(id: 'm1', provider: 'openai', model: 'gpt-test', apiKey: 'k'),
+    );
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: controller,
+        child: const MaterialApp(home: ChatPage()),
+      ),
+    );
+    await tester.pump();
+
+    // Create second session and select it
+    await controller.newSession();
+    await tester.pump();
+    final tiles = tester.widgetList<ListTile>(find.byType(ListTile)).toList();
+    // First tile is 'New Chat' button, skip it; next are sessions
+    final sessionTiles = tiles.where((t) => t.leading == null).toList();
+    expect(sessionTiles.length >= 2, isTrue);
+
+    // Select the second session tile in the list view via tap
+    await tester.tap(find.byType(ListTile).at(2));
+    await tester.pump();
+
+    // Bold text on selected
+    final textWidget = tester.widget<Text>(find.descendant(
+      of: find.byType(ListTile).at(2),
+      matching: find.byType(Text),
+    ));
+    expect(textWidget.style?.fontWeight, FontWeight.bold);
+
+    // Delete first session (tile at index 1 in list, skipping add tile)
+    final deleteBtn = find.byKey(const Key('delete-session-0'));
+    await tester.tap(deleteBtn);
+    await tester.pumpAndSettle();
+
+    // One less session now (assert via controller state)
+    expect(controller.sessions.length, sessionTiles.length - 1);
+  });
+
+  testWidgets('Error banner with Retry resends last prompt', (tester) async {
+    final tmpDir = await tester.runAsync(() => Directory.systemTemp.createTemp('humble_agent_test_'));
+    final storage = StorageService(baseDir: tmpDir?.path);
+    // Fake client that fails first, succeeds next
+    final client = _FlakyLlmClient(tokenDelay: Duration.zero);
+    client.tokensToEmit = const ['OK'];
+    final controller = ChatController(storage: storage, client: client);
+    controller.setActiveModel(
+      const LlmModel(id: 'm1', provider: 'openai', model: 'gpt-test', apiKey: 'k'),
+    );
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: controller,
+        child: const MaterialApp(home: ChatPage()),
+      ),
+    );
+    await tester.pump();
+
+    await tester.enterText(find.byKey(const Key('input-field')), 'Hello');
+    await tester.tap(find.byKey(const Key('send-button')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 10));
+
+    // Error banner visible with Retry
+    expect(find.byKey(const Key('error-banner')), findsOneWidget);
+    expect(find.byKey(const Key('retry-button')), findsOneWidget);
+
+    // Tap Retry, should stream and finalize
+    await tester.tap(find.byKey(const Key('retry-button')));
+    await tester.pump(const Duration(milliseconds: 20));
+    await tester.pump();
+
+    // Error banner gone and message present
+    expect(find.byKey(const Key('error-banner')), findsNothing);
+    expect(find.text('OK'), findsOneWidget);
   });
 }

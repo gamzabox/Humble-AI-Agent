@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:flutter_highlight/flutter_highlight.dart';
+import 'package:flutter_highlight/themes/github.dart';
 import '../services/llm_client.dart';
 
 import '../controllers/chat_controller.dart';
@@ -110,11 +112,24 @@ class _SessionList extends StatelessWidget {
             controller.newSession();
           },
         ),
-        ...controller.sessions.map((s) => ListTile(
-              title: Text(s.title.isEmpty ? 'New Chat' : s.title),
-              selected: controller.current == s,
+        for (var i = 0; i < controller.sessions.length; i++)
+          Builder(builder: (context) {
+            final s = controller.sessions[i];
+            final selected = controller.current == s;
+            return ListTile(
+              title: Text(
+                s.title.isEmpty ? 'New Chat' : s.title,
+                style: TextStyle(fontWeight: selected ? FontWeight.bold : FontWeight.normal),
+              ),
+              selected: selected,
               onTap: () => controller.selectSession(s),
-            )),
+              trailing: IconButton(
+                key: Key('delete-session-$i'),
+                icon: const Icon(Icons.delete_outline),
+                onPressed: () => controller.deleteSessionAt(i),
+              ),
+            );
+          }),
       ],
     );
   }
@@ -162,7 +177,7 @@ class _ChatViewState extends State<_ChatView> {
             ? Colors.red.shade50
             : (m.role == 'user' ? Colors.blue.shade50 : Colors.grey.shade200);
         final child = m.role == 'assistant'
-            ? MarkdownBody(data: m.content)
+            ? _AssistantContent(m.content)
             : Text(m.content, style: TextStyle(color: m.role == 'status' ? Colors.red : null));
         return Column(
           crossAxisAlignment: align,
@@ -292,38 +307,103 @@ class _InputBarState extends State<_InputBar> {
     final isSending = widget.sending;
     return Padding(
       padding: const EdgeInsets.all(8.0),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            child: TextField(
-              key: const Key('input-field'),
-              controller: _controller,
-              enabled: !isSending,
-              minLines: 1,
-              maxLines: 5,
-              decoration: const InputDecoration(
-                hintText: 'Type a message',
-                border: OutlineInputBorder(),
+          if (chat.lastError != null)
+            Container(
+              key: const Key('error-banner'),
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.red.shade50,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Row(
+                children: [
+                  Expanded(child: Text(chat.lastError!)),
+                  TextButton(
+                    key: const Key('retry-button'),
+                    onPressed: chat.retryLast,
+                    child: const Text('Retry'),
+                  ),
+                ],
               ),
             ),
-          ),
-          const SizedBox(width: 8),
-          ElevatedButton(
-            key: const Key('send-button'),
-            onPressed: () {
-              if (isSending) {
-                chat.cancel();
-              } else {
-                chat.send(_controller.text.trim());
-                if (!chat.sending) return;
-                // Clear local input display; content is in messages
-                _controller.clear();
-              }
-            },
-            child: Text(isSending ? 'Cancel' : 'Send'),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  key: const Key('input-field'),
+                  controller: _controller,
+                  enabled: !isSending,
+                  minLines: 1,
+                  maxLines: 5,
+                  decoration: const InputDecoration(
+                    hintText: 'Type a message',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton(
+                key: const Key('send-button'),
+                onPressed: () {
+                  if (isSending) {
+                    chat.cancel();
+                  } else {
+                    chat.send(_controller.text.trim());
+                    if (!chat.sending) return;
+                    // Clear local input display; content is in messages
+                    _controller.clear();
+                  }
+                },
+                child: Text(isSending ? 'Cancel' : 'Send'),
+              ),
+            ],
           ),
         ],
       ),
+    );
+  }
+}
+
+class _AssistantContent extends StatelessWidget {
+  final String content;
+  const _AssistantContent(this.content);
+
+  @override
+  Widget build(BuildContext context) {
+    final fence = '```';
+    final idx = content.indexOf(fence);
+    if (idx == -1) return MarkdownBody(data: content);
+    final end = content.indexOf(fence, idx + fence.length);
+    if (end == -1) return MarkdownBody(data: content);
+    final before = content.substring(0, idx);
+    final infoLineEnd = content.indexOf('\n', idx + fence.length);
+    final info = infoLineEnd != -1 ? content.substring(idx + fence.length, infoLineEnd).trim() : '';
+    final codeStart = (infoLineEnd != -1) ? infoLineEnd + 1 : idx + fence.length;
+    final code = content.substring(codeStart, end);
+    final after = content.substring(end + fence.length);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (before.trim().isNotEmpty) MarkdownBody(data: before.trim()),
+        Container(
+          key: const Key('code-block'),
+          padding: const EdgeInsets.all(8),
+          color: Colors.grey.shade100,
+          child: HighlightView(
+            code,
+            language: info.isEmpty ? 'plaintext' : info,
+            theme: githubTheme,
+            padding: EdgeInsets.zero,
+            textStyle: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+          ),
+        ),
+        if (after.trim().isNotEmpty) MarkdownBody(data: after.trim()),
+      ],
     );
   }
 }

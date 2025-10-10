@@ -15,3 +15,10 @@
 
 
 
+
+# New Enhancements
+- [x] Code block highlight with GitHub theme
+- [x] Session list: bold selected + delete
+- [x] Error banner with Retry for network issues
+
+
