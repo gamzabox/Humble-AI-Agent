@@ -5,26 +5,233 @@
 // gestures. You can also use WidgetTester to find child widgets in the widget
 // tree, read text, and verify that the values of widget properties are correct.
 
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
 
-import 'package:humble_ai_agent/main.dart';
+import 'package:humble_ai_agent/widgets/chat_page.dart';
+import 'package:humble_ai_agent/controllers/chat_controller.dart';
+import 'package:humble_ai_agent/services/llm_client.dart';
+import 'package:humble_ai_agent/services/storage_service.dart';
+
+class _FakeLlmClient implements LlmClient {
+  final Duration tokenDelay;
+  List<String> tokensToEmit;
+  _FakeLlmClient({
+    this.tokenDelay = const Duration(milliseconds: 10),
+    List<String>? tokensToEmit,
+  }) : tokensToEmit = tokensToEmit ?? const ['Hello', ' ', 'world!'];
+
+  @override
+  Stream<String> streamChat({
+    required List<ChatTurn> turns,
+    required LlmModel model,
+    required CancellationToken cancel,
+  }) async* {
+    for (final t in tokensToEmit) {
+      if (cancel.isCancelled) break;
+      // Allow cancellation to break the delay to avoid pending timers.
+      if (tokenDelay == Duration.zero) {
+        // No timers in tests to avoid pending timers on dispose.
+        await Future<void>(() {});
+      } else {
+        await Future.any([
+          Future.delayed(tokenDelay),
+          cancel.onCancel,
+        ]);
+      }
+      if (cancel.isCancelled) break;
+      yield t;
+    }
+  }
+}
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  testWidgets('Send streams response and finalizes UI', (tester) async {
+    final tmpDir = await tester.runAsync(
+      () => Directory.systemTemp.createTemp('humble_agent_test_'),
+    );
+    final storage = StorageService(baseDir: tmpDir?.path);
+    final client = _FakeLlmClient();
+    final controller = ChatController(storage: storage, client: client);
+    controller.setActiveModel(
+      const LlmModel(
+        id: 'm1',
+        provider: 'openai',
+        model: 'gpt-test',
+        apiKey: 'k',
+      ),
+    );
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: controller,
+        child: const MaterialApp(home: ChatPage()),
+      ),
+    );
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
     await tester.pump();
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    // Enter a prompt and send.
+    await tester.enterText(find.byKey(const Key('input-field')), 'Hi');
+    await tester.tap(find.byKey(const Key('send-button')));
+    await tester.pump();
+
+    // Input disabled and button shows Cancel
+    final TextField input = tester.widget(find.byKey(const Key('input-field')));
+    expect(input.enabled, isFalse);
+    expect(find.widgetWithText(ElevatedButton, 'Cancel'), findsOneWidget);
+
+    // Waiting placeholder appears
+    expect(find.textContaining('Waiting'), findsOneWidget);
+
+    // Stream tokens and finalize
+    // Let streaming progress
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 50));
+
+    // Input re-enabled, button restored
+    final TextField input2 = tester.widget(
+      find.byKey(const Key('input-field')),
+    );
+    expect(input2.enabled, isTrue);
+    expect(find.widgetWithText(ElevatedButton, 'Send'), findsOneWidget);
+
+    // Assistant message combined
+    expect(find.text('Hello world!'), findsOneWidget);
+  });
+
+  testWidgets('Cancel rolls back pending exchange', (tester) async {
+    final tmpDir = await tester.runAsync(
+      () => Directory.systemTemp.createTemp('humble_agent_test_'),
+    );
+    final storage = StorageService(baseDir: tmpDir?.path);
+    final client = _FakeLlmClient(tokenDelay: Duration.zero);
+    final controller = ChatController(storage: storage, client: client);
+    controller.setActiveModel(
+      const LlmModel(
+        id: 'm1',
+        provider: 'openai',
+        model: 'gpt-test',
+        apiKey: 'k',
+      ),
+    );
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: controller,
+        child: const MaterialApp(home: ChatPage()),
+      ),
+    );
+
+    await tester.pump();
+
+    await tester.enterText(find.byKey(const Key('input-field')), 'Hello');
+    await tester.tap(find.byKey(const Key('send-button')));
+    await tester.pump();
+
+    // Cancel quickly before any token
+    await tester.tap(find.widgetWithText(ElevatedButton, 'Cancel'));
+    await tester.pumpAndSettle();
+
+    // Input restored, no messages retained
+    final TextField input = tester.widget(find.byKey(const Key('input-field')));
+    expect(input.enabled, isTrue);
+    expect(find.widgetWithText(ElevatedButton, 'Send'), findsOneWidget);
+    expect(find.text('Hello'), findsNothing);
+  });
+
+  testWidgets('Initial split layout ~30/70 and session title', (tester) async {
+    final tmpDir = await tester.runAsync(
+      () => Directory.systemTemp.createTemp('humble_agent_test_'),
+    );
+    final storage = StorageService(baseDir: tmpDir?.path);
+    final client = _FakeLlmClient(tokensToEmit: const ['A', 'B', 'C']);
+    final controller = ChatController(storage: storage, client: client);
+    controller.setActiveModel(
+      const LlmModel(
+        id: 'm1',
+        provider: 'openai',
+        model: 'gpt-test',
+        apiKey: 'k',
+      ),
+    );
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: controller,
+        child: const MaterialApp(
+          home: SizedBox(width: 1000, height: 800, child: ChatPage()),
+        ),
+      ),
+    );
+
+    await tester.pump();
+
+    final left = tester.getSize(find.byKey(const Key('left-pane'))).width;
+    final right = tester.getSize(find.byKey(const Key('right-pane'))).width;
+    final ratio = left / (left + right + 6);
+    expect(ratio, inInclusiveRange(0.29, 0.31));
+
+    // Title updates on first user message
+    await tester.enterText(find.byKey(const Key('input-field')), 'First');
+    await tester.tap(find.byKey(const Key('send-button')));
+    await tester.pump(const Duration(milliseconds: 60));
+    await tester.pump(const Duration(milliseconds: 60));
+
+    expect(
+      find.text('First'),
+      findsWidgets,
+    ); // appears in session list title or bubbles
+  });
+
+  test('Model validation and persistence', () async {
+    final tmpDir = await Directory.systemTemp.createTemp('humble_agent_test_');
+    final storage = StorageService(baseDir: tmpDir.path);
+    final client = _FakeLlmClient();
+    final controller = ChatController(storage: storage, client: client);
+
+    // Invalid OpenAI (missing key)
+    final openaiInvalid = LlmModel(
+      id: 'o1',
+      provider: 'openai',
+      model: 'gpt-4o',
+      apiKey: '',
+    );
+    expect(controller.validateModel(openaiInvalid), isFalse);
+
+    // Valid OpenAI
+    final openaiValid = LlmModel(
+      id: 'o2',
+      provider: 'openai',
+      model: 'gpt-4o',
+      apiKey: 'x',
+    );
+    expect(await controller.addModel(openaiValid), isTrue);
+
+    // Invalid Ollama (missing base URL)
+    final ollamaInvalid = LlmModel(
+      id: 'ol1',
+      provider: 'ollama',
+      model: 'llama3',
+    );
+    expect(controller.validateModel(ollamaInvalid), isFalse);
+
+    // Valid Ollama
+    final ollamaValid = LlmModel(
+      id: 'ol2',
+      provider: 'ollama',
+      model: 'llama3',
+      baseUrl: 'http://localhost:11434',
+    );
+    expect(await controller.addModel(ollamaValid, activate: false), isTrue);
+
+    // Persisted
+    final cfg = await storage.loadConfig();
+    expect((cfg['models'] as List).length, 2);
+    expect(cfg['selectedModelId'], 'o2');
   });
 }
