@@ -12,7 +12,36 @@ class AssistantContent extends StatelessWidget {
 
   MarkdownStyleSheet _mdStyle(BuildContext context) {
     final cuTheme = cupertino.CupertinoTheme.of(context);
-    return MarkdownStyleSheet.fromCupertinoTheme(cuTheme);
+    return _scaleFontSizes(MarkdownStyleSheet.fromCupertinoTheme(cuTheme), 0.9);
+  }
+
+  /// MarkdownStyleSheet의 모든 폰트 크기를 조절하는 헬퍼 함수
+  MarkdownStyleSheet _scaleFontSizes(MarkdownStyleSheet sheet, double scale) {
+    // TextStyle의 폰트 크기를 조절하는 내부 함수
+    TextStyle? scaleTextStyle(TextStyle? textStyle) {
+      if (textStyle == null || textStyle.fontSize == null) return textStyle;
+      return textStyle.copyWith(fontSize: textStyle.fontSize! * scale);
+    }
+
+    // 4. copyWith를 사용하여 각 요소의 TextStyle을 수정
+    return sheet.copyWith(
+      p: scaleTextStyle(sheet.p),
+      h1: scaleTextStyle(sheet.h1),
+      h2: scaleTextStyle(sheet.h2),
+      h3: scaleTextStyle(sheet.h3),
+      h4: scaleTextStyle(sheet.h4),
+      h5: scaleTextStyle(sheet.h5),
+      h6: scaleTextStyle(sheet.h6),
+      em: scaleTextStyle(sheet.em),
+      strong: scaleTextStyle(sheet.strong),
+      del: scaleTextStyle(sheet.del),
+      blockquote: scaleTextStyle(sheet.blockquote),
+      img: scaleTextStyle(sheet.img),
+      checkbox: scaleTextStyle(sheet.checkbox),
+      listBullet: scaleTextStyle(sheet.listBullet),
+      tableHead: scaleTextStyle(sheet.tableHead),
+      tableBody: scaleTextStyle(sheet.tableBody),
+    );
   }
 
   @override
