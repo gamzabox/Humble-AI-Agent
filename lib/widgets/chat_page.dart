@@ -431,6 +431,18 @@ class _AssistantContent extends StatelessWidget {
   final String content;
   const _AssistantContent(this.content);
 
+  MarkdownStyleSheet _mdStyle(BuildContext context) {
+    final theme = Theme.of(context);
+    return MarkdownStyleSheet.fromTheme(theme).copyWith(
+      horizontalRuleDecoration: const BoxDecoration(
+        border: Border(top: BorderSide(width: 0.5, color: Color(0xFFd0d7de))),
+      ),
+      tableBorder: TableBorder.all(color: const Color(0xFFd0d7de), width: 1),
+      tableHead: const TextStyle(fontWeight: FontWeight.w600),
+      tableCellsPadding: const EdgeInsets.all(8),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final fence = '```';
@@ -445,10 +457,11 @@ class _AssistantContent extends StatelessWidget {
     final code = content.substring(codeStart, end);
     final after = content.substring(end + fence.length);
 
+    final style = _mdStyle(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (before.trim().isNotEmpty) MarkdownBody(data: before.trim()),
+        if (before.trim().isNotEmpty) MarkdownBody(data: before.trim(), styleSheet: style),
         Container(
           key: const Key('code-block'),
           padding: const EdgeInsets.all(8),
@@ -458,7 +471,7 @@ class _AssistantContent extends StatelessWidget {
             language: info.isEmpty ? 'plaintext' : info,
           ),
         ),
-        if (after.trim().isNotEmpty) MarkdownBody(data: after.trim()),
+        if (after.trim().isNotEmpty) MarkdownBody(data: after.trim(), styleSheet: style),
       ],
     );
   }

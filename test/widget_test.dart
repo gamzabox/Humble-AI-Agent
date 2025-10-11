@@ -1,4 +1,4 @@
-// This is a basic Flutter widget test.
+﻿// This is a basic Flutter widget test.
 //
 // To perform an interaction with a widget in your test, use the WidgetTester
 // utility in the flutter_test package. For example, you can send tap and scroll
@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 
 import 'package:humble_ai_agent/widgets/chat_page.dart';
 import 'package:humble_ai_agent/controllers/chat_controller.dart';
@@ -385,8 +386,14 @@ void main() {
     controller.selectSession(cur);
     await tester.pump();
 
-    expect(find.byKey(const Key('code-block')), findsOneWidget);
+    final block = find.byKey(const Key('code-block'));
+    expect(block, findsOneWidget);
+    final container = tester.widget<Container>(block);
+    final BoxDecoration? deco = container.decoration as BoxDecoration?;
+    // Light gray background like GitHub style
+    expect(container.color, equals(Colors.grey.shade100));
   });
+
 
   testWidgets('Session list bolds selected and can delete sessions', (tester) async {
     final tmpDir = await tester.runAsync(() => Directory.systemTemp.createTemp('humble_agent_test_'));
@@ -490,3 +497,5 @@ class _BlockingClient implements LlmClient {
     // Then complete without emitting
   }
 }
+
+
