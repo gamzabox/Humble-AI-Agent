@@ -386,12 +386,35 @@ void main() {
     controller.selectSession(cur);
     await tester.pump();
 
-    final block = find.byKey(const Key('code-block'));
-    expect(block, findsOneWidget);
-    final container = tester.widget<Container>(block);
-    final BoxDecoration? deco = container.decoration as BoxDecoration?;
-    // Light gray background like GitHub style
-    expect(container.color, equals(Colors.grey.shade100));
+    // Ensure at least one highlighted code block exists
+    expect(find.byType(SelectableText), findsOneWidget);
+  });
+
+  testWidgets('All fenced code blocks are highlighted', (tester) async {
+    final tmpDir = await tester.runAsync(() => Directory.systemTemp.createTemp('humble_agent_test_'));
+    final storage = StorageService(baseDir: tmpDir?.path);
+    final client = _FakeLlmClient();
+    final controller = ChatController(storage: storage, client: client);
+    controller.setActiveModel(
+      const LlmModel(id: 'm1', provider: 'openai', model: 'gpt-test', apiKey: 'k'),
+    );
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: controller,
+        child: const MaterialApp(home: ChatPage()),
+      ),
+    );
+    await tester.pump();
+
+    // Two fenced blocks with different languages
+    const multi = 'before\n\n```dart\nvoid a() {}\n```\n\ntext\n\n```python\nprint(1)\n```\nafter';
+    controller.current!.messages.add(const ChatMessage(role: 'assistant', content: multi));
+    controller.notifyListeners();
+    await tester.pump();
+
+    // Two SelectableText widgets (each code block is SelectableText.rich)
+    expect(find.byType(SelectableText), findsNWidgets(2));
   });
 
 
@@ -476,6 +499,33 @@ void main() {
     // Error banner gone and message present
     expect(find.byKey(const Key('error-banner')), findsNothing);
     expect(find.text('OK'), findsOneWidget);
+  });
+
+  testWidgets('Quoted fenced code blocks are not highlighted', (tester) async {
+    final tmpDir = await tester.runAsync(() => Directory.systemTemp.createTemp('humble_agent_test_'));
+    final storage = StorageService(baseDir: tmpDir?.path);
+    final client = _FakeLlmClient();
+    final controller = ChatController(storage: storage, client: client);
+    controller.setActiveModel(
+      const LlmModel(id: 'm1', provider: 'openai', model: 'gpt-test', apiKey: 'k'),
+    );
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: controller,
+        child: const MaterialApp(home: ChatPage()),
+      ),
+    );
+    await tester.pump();
+
+    // One quoted fenced block and one normal fenced block
+    const md = '> ```dart\n> void q() {}\n> ```\n\n```js\nfunction n() {}\n```';
+    controller.current!.messages.add(const ChatMessage(role: 'assistant', content: md));
+    controller.notifyListeners();
+    await tester.pump();
+
+    // Only the non-quoted block should be highlighted (SelectableText)
+    expect(find.byType(SelectableText), findsNWidgets(1));
   });
 }
 

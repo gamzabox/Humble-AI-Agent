@@ -566,38 +566,106 @@ class _AssistantContent extends StatelessWidget {
   Widget build(BuildContext context) {
     final style = _mdStyle(context);
     final fence = '```';
-    final idx = content.indexOf(fence);
-    if (idx == -1) return MarkdownBody(data: content, styleSheet: style);
-    final end = content.indexOf(fence, idx + fence.length);
-    if (end == -1) return MarkdownBody(data: content, styleSheet: style);
-    final before = content.substring(0, idx);
-    final infoLineEnd = content.indexOf('\n', idx + fence.length);
-    final info = infoLineEnd != -1
-        ? content.substring(idx + fence.length, infoLineEnd).trim()
-        : '';
-    final codeStart = (infoLineEnd != -1)
-        ? infoLineEnd + 1
-        : idx + fence.length;
-    final code = content.substring(codeStart, end);
-    final after = content.substring(end + fence.length);
+    List<Widget> children = [];
+    int cursor = 0;
+    while (true) {
+      final start = content.indexOf(fence, cursor);
+      if (start == -1) {
+        final tail = content.substring(cursor);
+        if (tail.trim().isNotEmpty) {
+          children.add(MarkdownBody(data: tail.trim(), styleSheet: style));
+        }
+        break;
+      }
+
+      // Add markdown before this fence
+      if (start > cursor) {
+        final before = content.substring(cursor, start);
+        if (before.trim().isNotEmpty) {
+          children.add(MarkdownBody(data: before.trim(), styleSheet: style));
+        }
+      }
+
+      // Determine if this fence is within a blockquote line (starts with optional spaces then '>')
+      final int lineStart = start > 0
+          ? content.lastIndexOf('\n', start - 1) + 1
+          : 0;
+      final linePrefix = content.substring(lineStart, start);
+      final isBlockquoteFence = linePrefix.trimLeft().startsWith('>');
+
+      // Find info line end
+      final infoLineEnd = content.indexOf('\n', start + fence.length);
+      if (infoLineEnd == -1) {
+        // No newline; treat rest as markdown
+        final tail = content.substring(start);
+        if (tail.trim().isNotEmpty) {
+          children.add(MarkdownBody(data: tail.trim(), styleSheet: style));
+        }
+        break;
+      }
+
+      if (isBlockquoteFence) {
+        // Skip custom highlighting: include entire blockquote-fenced code as markdown
+        int searchPos = infoLineEnd + 1;
+        int endFence = -1;
+        while (true) {
+          final nextFence = content.indexOf(fence, searchPos);
+          if (nextFence == -1) break;
+          final ls = content.lastIndexOf('\n', nextFence - 1) + 1;
+          final prefix = content.substring(ls, nextFence);
+          if (prefix.trimLeft().startsWith('>')) {
+            endFence = nextFence;
+            break;
+          }
+          searchPos = nextFence + fence.length;
+        }
+        if (endFence == -1) {
+          final tail = content.substring(lineStart);
+          children.add(MarkdownBody(data: tail.trim(), styleSheet: style));
+          break;
+        } else {
+          final block = content.substring(lineStart, endFence + fence.length);
+          children.add(MarkdownBody(data: block.trim(), styleSheet: style));
+          cursor = endFence + fence.length;
+          continue;
+        }
+      }
+
+      // Non-quoted fence: highlight
+      final info = content.substring(start + fence.length, infoLineEnd).trim();
+      final end = content.indexOf(fence, infoLineEnd + 1);
+      if (end == -1) {
+        final code = content.substring(infoLineEnd + 1);
+        children.add(
+          Container(
+            padding: const EdgeInsets.all(8),
+            color: Colors.grey.shade100,
+            child: _SelectableHighlight(
+              code: code,
+              language: info.isEmpty ? 'plaintext' : info,
+            ),
+          ),
+        );
+        break;
+      } else {
+        final code = content.substring(infoLineEnd + 1, end);
+        children.add(
+          Container(
+            padding: const EdgeInsets.all(8),
+            color: Colors.grey.shade100,
+            child: _SelectableHighlight(
+              code: code,
+              language: info.isEmpty ? 'plaintext' : info,
+            ),
+          ),
+        );
+        cursor = end + fence.length;
+      }
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (before.trim().isNotEmpty)
-          MarkdownBody(data: before.trim(), styleSheet: style),
-        Container(
-          key: const Key('code-block'),
-          padding: const EdgeInsets.all(8),
-          color: Colors.grey.shade100,
-          child: _SelectableHighlight(
-            code: code,
-            language: info.isEmpty ? 'plaintext' : info,
-          ),
-        ),
-        if (after.trim().isNotEmpty)
-          MarkdownBody(data: after.trim(), styleSheet: style),
-      ],
+      children: children,
     );
   }
 }
