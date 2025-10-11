@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
@@ -42,7 +42,7 @@ class ChatController extends ChangeNotifier {
   String? get lastError => _lastError;
   String? _lastFailedPrompt;
 
-  static const String waitingPlaceholder = 'Waiting Response…';
+  static const String waitingPlaceholder = 'Waiting response...';
 
   ChatController({required this.storage, required this.client}) {
     // Ensure an initial session is available immediately for UI/tests
@@ -251,11 +251,18 @@ class ChatController extends ChangeNotifier {
     await storage.saveConfig(map);
   }
 
+
   Future<void> deleteSessionAt(int index) async {
     if (index < 0 || index >= sessions.length) return;
     final removed = sessions.removeAt(index);
     if (identical(removed, _current)) {
       _current = sessions.isNotEmpty ? sessions.first : null;
+    }
+    // 모든 세션이 삭제된 경우 자동으로 새 세션 생성
+    if (sessions.isEmpty) {
+      final s = ChatSession(id: _genId(), title: 'New Chat');
+      sessions.add(s);
+      _current = s;
     }
     await _persistSessions();
     notifyListeners();
@@ -268,3 +275,4 @@ class ChatController extends ChangeNotifier {
     }
   }
 }
+

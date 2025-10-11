@@ -105,20 +105,52 @@ class _SessionList extends StatelessWidget {
         },
       ),
       for (var i = 0; i < controller.sessions.length; i++)
-        Builder(builder: (context) {
+        Builder(builder: (tileContext) {
           final s = controller.sessions[i];
           final selected = controller.current == s;
-          return ListTile(
-            title: Text(
-              s.title.isEmpty ? 'New Chat' : s.title,
-              style: TextStyle(fontWeight: selected ? FontWeight.bold : FontWeight.normal),
-            ),
-            selected: selected,
-            onTap: () => controller.selectSession(s),
-            trailing: IconButton(
-              key: Key('delete-session-$i'),
-              icon: const Icon(Icons.delete_outline),
-              onPressed: () => controller.deleteSessionAt(i),
+          Future<void> showContextMenu(Offset globalPosition) async {
+            final overlay = Overlay.of(tileContext).context.findRenderObject() as RenderBox?;
+            final size = overlay?.size ?? const Size(0, 0);
+            final selectedAction = await showMenu<String>(
+              context: tileContext,
+              position: RelativeRect.fromLTRB(
+                globalPosition.dx,
+                globalPosition.dy,
+                size.width - globalPosition.dx,
+                size.height - globalPosition.dy,
+              ),
+              items: const [
+                PopupMenuItem<String>(
+                  key: Key('session-context-delete'),
+                  value: 'delete',
+                  child: Text('Delete'),
+                ),
+              ],
+            );
+            if (selectedAction == 'delete') {
+              controller.deleteSessionAt(i);
+            }
+          }
+
+          return GestureDetector(
+            onSecondaryTapDown: (details) => showContextMenu(details.globalPosition),
+            onLongPress: () {
+              final box = tileContext.findRenderObject() as RenderBox?;
+              final pos = box?.localToGlobal(box.size.center(Offset.zero)) ?? Offset.zero;
+              showContextMenu(pos);
+            },
+            child: ListTile(
+              title: Text(
+                s.title.isEmpty ? 'New Chat' : s.title,
+                style: TextStyle(fontWeight: selected ? FontWeight.bold : FontWeight.normal),
+              ),
+              selected: selected,
+              onTap: () => controller.selectSession(s),
+              onLongPress: () {
+                final box = tileContext.findRenderObject() as RenderBox?;
+                final pos = box?.localToGlobal(box.size.center(Offset.zero)) ?? Offset.zero;
+                showContextMenu(pos);
+              },
             ),
           );
         }),

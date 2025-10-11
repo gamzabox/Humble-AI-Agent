@@ -1,3 +1,12 @@
+﻿// 梨꾪똿 ?뚮줈???꾨컲??寃利앺븯???듯빀 ?꾩젽/濡쒖쭅 ?뚯뒪??
+// 踰붿쐞:
+// - ?꾩넚/?ㅽ듃由щ컢/?꾨즺 UI ?꾩씠
+// - 痍⑥냼 ??濡ㅻ갚 ?숈옉怨??몄뀡 珥덇린??
+// - ?덉씠?꾩썐 鍮꾩쑉 諛??몄뀡 ??댄? ?몄텧
+// - 紐⑤뜽 ?좏슚??寃利?????좏깮 ?쒕∼?ㅼ슫 ?몄텧
+// - ?ㅻ낫???⑥텞??Shift+Enter) ?꾩넚
+// - ?ㅻ쪟 諛곕꼫 諛??ъ떆???숈옉
+// - API ?몄텧 ?댁뿉 placeholder 誘명룷??寃利???
 import 'dart:async';
 import 'dart:io';
 
@@ -36,7 +45,7 @@ class _FakeLlmClient implements LlmClient {
       yield t;
     }
   }
-}
+} // 泥??몄텧留??ㅽ뙣?섍퀬 ?댄썑 ?뺤긽 ?숈옉?섎뒗 媛吏??대씪?댁뼵??
 
 class _FlakyLlmClient extends _FakeLlmClient {
   bool failNext = true;
@@ -57,7 +66,7 @@ class _FlakyLlmClient extends _FakeLlmClient {
     }
     yield* super.streamChat(turns: turns, model: model, cancel: cancel);
   }
-}
+} // 痍⑥냼 ?좏샇媛 ???뚭퉴吏 ?湲고븯??媛吏??대씪?댁뼵??
 
 class _BlockingClient implements LlmClient {
   @override
@@ -68,7 +77,7 @@ class _BlockingClient implements LlmClient {
   }) async* {
     await cancel.onCancel;
   }
-}
+} // ?꾨떖???댁쓣 罹≪쿂留??섎뒗 媛吏??대씪?댁뼵??
 
 class _CapturingClient implements LlmClient {
   final void Function(List<ChatTurn>) onCapture;
@@ -379,8 +388,8 @@ void main() {
   testWidgets('Session list bolds selected and can delete sessions', (
     tester,
   ) async {
-    // 목적: 세션 목록에서 선택 항목은 굵게 표시되고 인라인 삭제 버튼이 제거되었는지 확인합니다.
-    // 또한 모든 세션 삭제 시 자동으로 새 세션이 생성되는지 검증합니다.
+    // ?몄뀡 紐⑸줉?먯꽌 ?좏깮????ぉ? 蹂쇰뱶濡??쒖떆?섎ŉ, ??젣 踰꾪듉???쒓굅?섏뿀?뚯쓣 ?뺤씤?⑸땲??
+    // ?먰븳 紐⑤뱺 ?몄뀡????젣?덉쓣 ???먮룞?쇰줈 ???몄뀡???앹꽦?섎뒗吏 寃利앺빀?덈떎.
     final tmpDir = await tester.runAsync(
       () => Directory.systemTemp.createTemp('humble_agent_test_'),
     );
@@ -406,6 +415,7 @@ void main() {
     await controller.newSession();
     await tester.pump();
 
+    // ?좏깮 ??ぉ? 蹂쇰뱶 ?쒖떆
     await tester.tap(find.byType(ListTile).at(2));
     await tester.pump();
     final textWidget = tester.widget<Text>(
@@ -416,8 +426,10 @@ void main() {
     );
     expect(textWidget.style?.fontWeight, FontWeight.bold);
 
+    // ??젣 踰꾪듉???щ씪議뚯쓬??蹂댁옣 (?고겢由?而⑦뀓?ㅽ듃 硫붾돱濡??泥?
     expect(find.byKey(const Key('delete-session-0')), findsNothing);
 
+    // 而⑦듃濡ㅻ윭 API濡?紐⑤뱺 ?몄뀡????젣 -> 留덉?留???젣 ???먮룞?쇰줈 ???몄뀡??1媛??앹꽦?섏뼱????
     while (true) {
       final len = controller.sessions.length;
       await tester.runAsync(() => controller.deleteSessionAt(0));
@@ -462,3 +474,4 @@ void main() {
     expect(find.text('OK'), findsOneWidget);
   });
 }
+
