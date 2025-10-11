@@ -4,6 +4,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_highlight/flutter_highlight.dart';
 import 'package:flutter_highlight/themes/github.dart';
 import 'package:flutter/services.dart';
+import 'package:highlight/highlight.dart' as hl;
 import '../services/llm_client.dart';
 
 import '../controllers/chat_controller.dart';
@@ -183,49 +184,51 @@ class _ChatViewState extends State<_ChatView> {
     final session = controller.current;
     final messages = session?.messages ?? const [];
     _postScroll();
-    return ListView.builder(
-      controller: _scroll,
-      key: const Key('chat-list'),
-      itemCount: messages.length,
-      itemBuilder: (context, index) {
-        final m = messages[index];
-        final align = m.role == 'user' ? CrossAxisAlignment.end : CrossAxisAlignment.start;
-        if (m.role == 'assistant') {
-          // Assistant answers: no bubble, render content directly with light spacing.
+    return SelectionArea(
+      child: ListView.builder(
+        controller: _scroll,
+        key: const Key('chat-list'),
+        itemCount: messages.length,
+        itemBuilder: (context, index) {
+          final m = messages[index];
+          final align = m.role == 'user' ? CrossAxisAlignment.end : CrossAxisAlignment.start;
+          if (m.role == 'assistant') {
+            // Assistant answers: no bubble, render content directly with light spacing.
+            return Column(
+              crossAxisAlignment: align,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: _AssistantContent(m.content),
+                ),
+              ],
+            );
+          }
+
+          final bg = m.role == 'status'
+              ? Colors.red.shade50
+              : Colors.blue.shade50; // user bubble color
+          final child = Text(
+            m.content,
+            style: TextStyle(color: m.role == 'status' ? Colors.red : null),
+          );
+
           return Column(
             crossAxisAlignment: align,
             children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                child: _AssistantContent(m.content),
+              Container(
+                margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: bg,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: child,
               ),
             ],
           );
-        }
-
-        final bg = m.role == 'status'
-            ? Colors.red.shade50
-            : Colors.blue.shade50; // user bubble color
-        final child = Text(
-          m.content,
-          style: TextStyle(color: m.role == 'status' ? Colors.red : null),
-        );
-
-        return Column(
-          crossAxisAlignment: align,
-          children: [
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: bg,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: child,
-            ),
-          ],
-        );
-      },
+        },
+      ),
     );
   }
 }
@@ -449,16 +452,58 @@ class _AssistantContent extends StatelessWidget {
           key: const Key('code-block'),
           padding: const EdgeInsets.all(8),
           color: Colors.grey.shade100,
-          child: HighlightView(
-            code,
+          child: _SelectableHighlight(
+            code: code,
             language: info.isEmpty ? 'plaintext' : info,
-            theme: githubTheme,
-            padding: EdgeInsets.zero,
-            textStyle: const TextStyle(fontFamily: 'monospace', fontSize: 13),
           ),
         ),
         if (after.trim().isNotEmpty) MarkdownBody(data: after.trim()),
       ],
     );
+  }
+}
+
+class _SelectableHighlight extends StatelessWidget {
+  final String code;
+  final String language;
+  const _SelectableHighlight({required this.code, required this.language});
+
+  TextSpan _buildSpan(List<hl.Node> nodes) {
+    List<TextSpan> spans = [];
+    TextStyle? styleFor(String? className) {
+      if (className == null) return null;
+      final parts = className.split(' ');
+      TextStyle? merged;
+      for (final p in parts) {
+        final s = githubTheme[p];
+        if (s != null) merged = (merged ?? const TextStyle()).merge(s);
+      }
+      return merged;
+    }
+
+    void walk(hl.Node node, List<TextSpan> out) {
+      if (node.value != null) {
+        out.add(TextSpan(text: node.value, style: styleFor(node.className)));
+      } else if (node.children != null) {
+        final children = <TextSpan>[];
+        for (final c in node.children!) {
+          walk(c, children);
+        }
+        out.add(TextSpan(children: children, style: styleFor(node.className)));
+      }
+    }
+
+    for (final n in nodes) {
+      walk(n, spans);
+    }
+    return TextSpan(children: spans, style: const TextStyle(fontFamily: 'monospace', fontSize: 13));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final res = hl.highlight.parse(code, language: language);
+    final nodes = res.nodes ?? const <hl.Node>[];
+    final span = _buildSpan(nodes);
+    return SelectableText.rich(span);
   }
 }
