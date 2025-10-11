@@ -96,6 +96,3 @@ flutter_launcher_icons:
   windows:
     generate: true
     image_path: "icon.png" # 사용할 아이콘 이미지 경로
-  linux:
-    generate: true
-    image_path: "icon.png" # 사용할 아이콘 이미지 경로
