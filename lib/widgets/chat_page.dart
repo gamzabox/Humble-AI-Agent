@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_highlight/flutter_highlight.dart';
 import 'package:flutter_highlight/themes/github.dart';
+import 'package:flutter/services.dart';
 import '../services/llm_client.dart';
 
 import '../controllers/chat_controller.dart';
@@ -189,12 +190,27 @@ class _ChatViewState extends State<_ChatView> {
       itemBuilder: (context, index) {
         final m = messages[index];
         final align = m.role == 'user' ? CrossAxisAlignment.end : CrossAxisAlignment.start;
+        if (m.role == 'assistant') {
+          // Assistant answers: no bubble, render content directly with light spacing.
+          return Column(
+            crossAxisAlignment: align,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                child: _AssistantContent(m.content),
+              ),
+            ],
+          );
+        }
+
         final bg = m.role == 'status'
             ? Colors.red.shade50
-            : (m.role == 'user' ? Colors.blue.shade50 : Colors.grey.shade200);
-        final child = m.role == 'assistant'
-            ? _AssistantContent(m.content)
-            : Text(m.content, style: TextStyle(color: m.role == 'status' ? Colors.red : null));
+            : Colors.blue.shade50; // user bubble color
+        final child = Text(
+          m.content,
+          style: TextStyle(color: m.role == 'status' ? Colors.red : null),
+        );
+
         return Column(
           crossAxisAlignment: align,
           children: [
@@ -321,6 +337,13 @@ class _InputBarState extends State<_InputBar> {
   Widget build(BuildContext context) {
     final chat = context.watch<ChatController>();
     final isSending = widget.sending;
+    void sendNow() {
+      if (isSending) return;
+      chat.send(_controller.text.trim());
+      if (!chat.sending) return;
+      _controller.clear();
+    }
+
     return Padding(
       padding: const EdgeInsets.all(8.0),
       child: Column(
@@ -346,42 +369,58 @@ class _InputBarState extends State<_InputBar> {
                 ],
               ),
             ),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  key: const Key('input-field'),
-                  controller: _controller,
-                  enabled: !isSending,
-                  minLines: 1,
-                  maxLines: 5,
-                  decoration: const InputDecoration(
-                    hintText: 'Type a message',
-                    border: OutlineInputBorder(),
-                  ),
+          Shortcuts(
+            shortcuts: <ShortcutActivator, Intent>{
+              const SingleActivator(LogicalKeyboardKey.enter, shift: true): const SendMessageIntent(),
+            },
+            child: Actions(
+              actions: <Type, Action<Intent>>{
+                SendMessageIntent: CallbackAction<SendMessageIntent>(
+                  onInvoke: (intent) {
+                    sendNow();
+                    return null;
+                  },
                 ),
+              },
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      key: const Key('input-field'),
+                      controller: _controller,
+                      enabled: !isSending,
+                      minLines: 1,
+                      maxLines: 5,
+                      decoration: const InputDecoration(
+                        hintText: 'Type a message',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    key: const Key('send-button'),
+                    onPressed: () {
+                      if (isSending) {
+                        chat.cancel();
+                      } else {
+                        sendNow();
+                      }
+                    },
+                    child: Text(isSending ? 'Cancel' : 'Send'),
+                  ),
+                ],
               ),
-              const SizedBox(width: 8),
-              ElevatedButton(
-                key: const Key('send-button'),
-                onPressed: () {
-                  if (isSending) {
-                    chat.cancel();
-                  } else {
-                    chat.send(_controller.text.trim());
-                    if (!chat.sending) return;
-                    // Clear local input display; content is in messages
-                    _controller.clear();
-                  }
-                },
-                child: Text(isSending ? 'Cancel' : 'Send'),
-              ),
-            ],
+            ),
           ),
         ],
       ),
     );
   }
+}
+
+class SendMessageIntent extends Intent {
+  const SendMessageIntent();
 }
 
 class _AssistantContent extends StatelessWidget {

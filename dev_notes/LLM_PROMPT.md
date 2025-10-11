@@ -7,6 +7,7 @@
 # 전체 기능 구현
 REQUIREMENTS.md 파일에 기술된 요구사항을 파악해 LLM 채팅 프로그램 구현
 
-
+# Theme 변경
+macos ui 를 적용해 앱의 전체 테마를 변경
 
 
