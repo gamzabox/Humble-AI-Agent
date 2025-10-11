@@ -1,4 +1,13 @@
-﻿import 'dart:async';
+// 채팅 플로우 전반을 검증하는 통합 위젯/로직 테스트
+// 범위:
+// - 전송/스트리밍/완료 UI 전이
+// - 취소 시 롤백 동작과 세션 초기화
+// - 레이아웃 비율 및 세션 타이틀 노출
+// - 모델 유효성 검증/저장/선택 드롭다운 노출
+// - 키보드 단축키(Shift+Enter) 전송
+// - 오류 배너 및 재시도 동작
+// - API 호출 턴에 placeholder 미포함 검증 등
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -11,6 +20,9 @@ import 'package:humble_ai_agent/controllers/chat_controller.dart';
 import 'package:humble_ai_agent/services/llm_client.dart';
 import 'package:humble_ai_agent/services/storage_service.dart';
 
+// 토큰을 순차적으로 방출하는 간단한 가짜 LLM 클라이언트
+// - streamChat은 tokensToEmit 목록을 지연(tokenDelay)과 함께 차례로 yield 합니다.
+// - 취소 토큰이 설정되면 즉시 스트리밍을 중단합니다.
 class _FakeLlmClient implements LlmClient {
   final Duration tokenDelay;
   List<String> tokensToEmit;
@@ -24,9 +36,9 @@ class _FakeLlmClient implements LlmClient {
     required CancellationToken cancel,
   }) async* {
     for (final t in tokensToEmit) {
-      if (cancel.isCancelled) break;
+      if (cancel.isCancelled) break; // 취소되면 중단
       if (tokenDelay == Duration.zero) {
-        await Future<void>.value();
+        await Future<void>.value(); // 이벤트 루프 한 틱 양보
       } else {
         await Future.any([
           Future.delayed(tokenDelay),
@@ -34,11 +46,12 @@ class _FakeLlmClient implements LlmClient {
         ]);
       }
       if (cancel.isCancelled) break;
-      yield t;
+      yield t; // 한 토큰씩 방출 (스트리밍 시뮬레이션)
     }
   }
 }
 
+// 첫 호출만 실패(에러 스트림 방출)하고 이후에는 정상 동작하는 가짜 클라이언트
 class _FlakyLlmClient extends _FakeLlmClient {
   bool failNext = true;
   _FlakyLlmClient({super.tokenDelay, super.tokensToEmit});
@@ -53,25 +66,30 @@ class _FlakyLlmClient extends _FakeLlmClient {
   }
 }
 
+// 취소 신호가 올 때까지 블로킹되는 가짜 클라이언트
 class _BlockingClient implements LlmClient {
   @override
   Stream<String> streamChat({required List<ChatTurn> turns, required LlmModel model, required CancellationToken cancel}) async* {
-    await cancel.onCancel; // wait for cancel
+    await cancel.onCancel; // cancel 신호 대기 (토큰 방출 없음)
   }
 }
 
+// 전달된 turns를 캡쳐만 하고 아무 것도 방출하지 않는 클라이언트
 class _CapturingClient implements LlmClient {
   final void Function(List<ChatTurn>) onCapture;
   _CapturingClient(this.onCapture);
   @override
   Stream<String> streamChat({required List<ChatTurn> turns, required LlmModel model, required CancellationToken cancel}) async* {
-    onCapture(turns);
+    onCapture(turns); // API로 전달되는 턴 구성 검증 용도
     yield* const Stream<String>.empty();
   }
 }
 
 void main() {
   testWidgets('Send streams response and finalizes UI', (tester) async {
+    // 전송 후
+    // 1) 입력 비활성화 + Cancel 버튼 + Waiting 표시
+    // 2) 일정 시간 후 스트리밍 완료 -> 입력 활성화 + Send 버튼 + 최종 응답 표시
     final tmpDir = await tester.runAsync(() => Directory.systemTemp.createTemp('humble_agent_test_'));
     final storage = StorageService(baseDir: tmpDir?.path);
     final client = _FakeLlmClient();
@@ -99,6 +117,9 @@ void main() {
   });
 
   testWidgets('Cancel rolls back pending exchange', (tester) async {
+    // 전송 직후 Blocking 클라이언트로 응답이 오지 않는 상황에서 Cancel을 누르면
+    // - 입력이 다시 활성화되고
+    // - 사용자가 보낸 메시지(대기/플레이스홀더 포함)가 롤백되어 사라져야 합니다.
     final tmpDir = await tester.runAsync(() => Directory.systemTemp.createTemp('humble_agent_test_'));
     final storage = StorageService(baseDir: tmpDir?.path);
     final client = _BlockingClient();
@@ -121,6 +142,8 @@ void main() {
   });
 
   testWidgets('Initial split layout ~30/70 and session title', (tester) async {
+    // 초기 레이아웃 좌:우 비율이 약 30:70 인지 확인하고,
+    // 첫 전송 후 세션 타이틀(사용자 첫 메시지)이 UI에 표시되는지 검증합니다.
     final tmpDir = await tester.runAsync(() => Directory.systemTemp.createTemp('humble_agent_test_'));
     final storage = StorageService(baseDir: tmpDir?.path);
     final client = _FakeLlmClient(tokensToEmit: const ['A', 'B', 'C']);
@@ -143,6 +166,10 @@ void main() {
   });
 
   test('Model validation and persistence', () async {
+    // 모델 유효성 검증 규칙 및 저장 로직을 검증합니다.
+    // - OpenAI: apiKey 필수
+    // - Ollama: baseUrl 필수
+    // 저장 후 구성(config)에 모델 2개가 저장되고 선택된 모델 ID가 기대값인지 확인합니다.
     final tmpDir = await Directory.systemTemp.createTemp('humble_agent_test_');
     final storage = StorageService(baseDir: tmpDir.path);
     final client = _FakeLlmClient();
@@ -163,6 +190,7 @@ void main() {
   });
 
   testWidgets('Shift+Enter sends message', (tester) async {
+    // 입력 포커스 상태에서 Shift+Enter 조합으로 전송이 트리거되는지 확인합니다.
     final tmpDir = await tester.runAsync(() => Directory.systemTemp.createTemp('humble_agent_test_'));
     final storage = StorageService(baseDir: tmpDir?.path);
     final client = _FakeLlmClient();
@@ -184,6 +212,7 @@ void main() {
   });
 
   testWidgets('Model dropdown appears when models exist', (tester) async {
+    // 모델이 하나 이상 저장되어 있으면 모델 선택 드롭다운이 표시되어야 합니다.
     final tmpDir = await tester.runAsync(() => Directory.systemTemp.createTemp('humble_agent_test_'));
     final storage = StorageService(baseDir: tmpDir?.path);
     final client = _FakeLlmClient();
@@ -196,6 +225,8 @@ void main() {
   });
 
   testWidgets('Waiting placeholder is not sent to API turns', (tester) async {
+    // 이전 대화와 신규 사용자 입력이 결합되어 API 호출로 전달되되,
+    // UI에서 임시로 표시되는 "Waiting" 메시지는 API turns에 포함되지 않아야 합니다.
     final tmpDir = await tester.runAsync(() => Directory.systemTemp.createTemp('humble_agent_test_'));
     final storage = StorageService(baseDir: tmpDir?.path);
     late List<ChatTurn> capturedTurns;
@@ -214,6 +245,8 @@ void main() {
   });
 
   testWidgets('New Chat cancels in-flight request', (tester) async {
+    // 전송 중(New Chat 전환 전)인 상태에서 'New Chat'을 누르면
+    // 진행 중 요청이 취소되고, 현 세션 메시지가 초기화되어야 합니다.
     final tmpDir = await tester.runAsync(() => Directory.systemTemp.createTemp('humble_agent_test_'));
     final storage = StorageService(baseDir: tmpDir?.path);
     final client = _BlockingClient();
@@ -233,6 +266,7 @@ void main() {
   });
 
   testWidgets('Session list bolds selected and can delete sessions', (tester) async {
+    // 세션 목록에서 선택된 항목은 볼드로 표시되며 삭제 아이콘으로 제거할 수 있습니다.
     final tmpDir = await tester.runAsync(() => Directory.systemTemp.createTemp('humble_agent_test_'));
     final storage = StorageService(baseDir: tmpDir?.path);
     final client = _FakeLlmClient();
@@ -253,6 +287,8 @@ void main() {
   });
 
   testWidgets('Error banner with Retry resends last prompt', (tester) async {
+    // 첫 요청은 네트워크 오류로 실패(에러 배너 노출), 이후 Retry를 누르면
+    // 마지막 프롬프트로 재요청되어 성공 토큰이 표시되어야 합니다.
     final tmpDir = await tester.runAsync(() => Directory.systemTemp.createTemp('humble_agent_test_'));
     final storage = StorageService(baseDir: tmpDir?.path);
     final client = _FlakyLlmClient(tokenDelay: Duration.zero)..tokensToEmit = const ['OK'];
@@ -273,5 +309,4 @@ void main() {
     expect(find.text('OK'), findsOneWidget);
   });
 }
-
 
