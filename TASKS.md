@@ -1,4 +1,4 @@
-﻿# Tasks
+# Tasks
 
 - [x] Define data models (Session, Message)
 - [x] Storage service for config/sessions (with base dir override)
@@ -27,3 +27,4 @@
 - [x] 테스트 안정화: 파일 IO를 유발하는 `deleteSessionAt()` 호출을 `tester.runAsync`로 래핑
 
 
+- [x] Session list items show on a single line with ellipsis

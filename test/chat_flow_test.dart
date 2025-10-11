@@ -416,6 +416,17 @@ void main() {
     );
     expect(textWidget.style?.fontWeight, FontWeight.bold);
 
+    // 세션 제목은 한 줄로만 표시(넘침 시 말줄임)되어야 함
+    final titleText = tester.widget<Text>(
+      find.descendant(
+        of: find.byType(ListTile).at(2),
+        matching: find.byType(Text),
+      ),
+    );
+    expect(titleText.maxLines, 1);
+    expect(titleText.overflow, TextOverflow.ellipsis);
+    expect(titleText.softWrap, isFalse);
+
     expect(find.byKey(const Key('delete-session-0')), findsNothing);
 
     while (true) {

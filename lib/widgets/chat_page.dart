@@ -143,6 +143,9 @@ class _SessionList extends StatelessWidget {
               title: Text(
                 s.title.isEmpty ? 'New Chat' : s.title,
                 style: TextStyle(fontWeight: selected ? FontWeight.bold : FontWeight.normal),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                softWrap: false,
               ),
               selected: selected,
               onTap: () => controller.selectSession(s),
