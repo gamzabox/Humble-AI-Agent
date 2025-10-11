@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:macos_ui/macos_ui.dart' as macos;
 
 import 'controllers/chat_controller.dart';
 import 'services/llm_client.dart';
@@ -19,11 +20,9 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
       create: (_) => ChatController(storage: StorageService(), client: RoutingLlmClient()),
-      child: MaterialApp(
+      child: macos.MacosApp(
         title: 'Humble AI Agent',
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-        ),
+        theme: macos.MacosThemeData(),
         home: const ChatPage(),
       ),
     );

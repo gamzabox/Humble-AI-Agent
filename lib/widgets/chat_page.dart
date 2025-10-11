@@ -14,35 +14,12 @@ class ChatPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final controller = context.watch<ChatController>();
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Humble AI Agent'),
-        actions: [
-          if (controller.models.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8.0),
-              child: DropdownButton<LlmModel>(
-                value: controller.activeModel,
-                onChanged: (m) {
-                  if (m != null) controller.setActiveModel(m);
-                },
-                items: controller.models
-                    .map((m) => DropdownMenuItem(
-                          value: m,
-                          child: Text('${m.model} (${m.provider})'),
-                        ))
-                    .toList(),
-              ),
-            ),
-          IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: () => showDialog(context: context, builder: (_) => const _ModelSettingsDialog()),
-          ),
-        ],
-      ),
+      appBar: null,
       body: const _SplitLayout(),
     );
   }
 }
+
 
 class _SplitLayout extends StatefulWidget {
   const _SplitLayout();
@@ -85,6 +62,7 @@ class _SplitLayoutState extends State<_SplitLayout> {
               key: const Key('right-pane'),
               child: Column(
                 children: [
+                  const _TopControls(),
                   Expanded(child: _ChatView()),
                   _InputBar(sending: controller.sending),
                 ],
@@ -93,6 +71,44 @@ class _SplitLayoutState extends State<_SplitLayout> {
           ],
         );
       },
+    );
+  }
+}
+
+class _TopControls extends StatelessWidget {
+  const _TopControls();
+  @override
+  Widget build(BuildContext context) {
+    final chat = context.watch<ChatController>();
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      alignment: Alignment.centerLeft,
+      child: Row(
+        children: [
+          if (chat.models.isNotEmpty)
+            DropdownButton<LlmModel>(
+              value: chat.activeModel,
+              onChanged: (m) {
+                if (m != null) chat.setActiveModel(m);
+              },
+              items: chat.models
+                  .map((m) => DropdownMenuItem(
+                        value: m,
+                        child: Text('${m.model} (${m.provider})'),
+                      ))
+                  .toList(),
+            ),
+          const Spacer(),
+          IconButton(
+            icon: const Icon(Icons.settings),
+            tooltip: 'Settings',
+            onPressed: () => showDialog(
+              context: context,
+              builder: (_) => const _ModelSettingsDialog(),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
