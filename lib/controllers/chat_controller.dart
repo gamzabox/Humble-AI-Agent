@@ -42,6 +42,8 @@ class ChatController extends ChangeNotifier {
   String? get lastError => _lastError;
   String? _lastFailedPrompt;
 
+  static const String waitingPlaceholder = 'Waiting Response…';
+
   ChatController({required this.storage, required this.client}) {
     // Ensure an initial session is available immediately for UI/tests
     _current = ChatSession(id: _genId(), title: 'New Chat');
@@ -70,6 +72,7 @@ class ChatController extends ChangeNotifier {
     // Load config
     final cfg = await storage.loadConfig();
     final rawModels = (cfg['models'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+    _models.clear();
     for (final m in rawModels) {
       _models.add(LlmModel(
         id: m['id'],
@@ -109,17 +112,20 @@ class ChatController extends ChangeNotifier {
     cur.title = (cur.title == 'New Chat' && text.isNotEmpty) ? text : cur.title;
 
     // Add waiting placeholder assistant message
-    final placeholder = ChatMessage(role: 'assistant', content: 'Waiting Response…');
+    final placeholder = const ChatMessage(role: 'assistant', content: waitingPlaceholder);
     cur.messages.add(placeholder);
     notifyListeners();
 
     _cancelToken = CancellationToken();
+    // Build turns excluding the waiting placeholder so it is not sent to APIs
+    final turns = cur.messages
+        .where((m) => (m.role == 'user' || m.role == 'assistant') && !(m.role == 'assistant' && m.content == waitingPlaceholder))
+        .map((m) => ChatTurn(role: m.role, content: m.content))
+        .toList();
+
     _sub = client
         .streamChat(
-          turns: cur.messages
-              .where((m) => m.role == 'user' || m.role == 'assistant')
-              .map((m) => ChatTurn(role: m.role, content: m.content))
-              .toList(),
+          turns: turns,
           model: _activeModel!,
           cancel: _cancelToken!,
         )
@@ -127,7 +133,10 @@ class ChatController extends ChangeNotifier {
       // Update last assistant message by appending tokens
       if (cur.messages.isNotEmpty && cur.messages.last.role == 'assistant') {
         final last = cur.messages.removeLast();
-        final updated = ChatMessage(role: last.role, content: '${last.content == 'Waiting Response…' ? '' : last.content}$chunk');
+        final updated = ChatMessage(
+          role: last.role,
+          content: '${last.content == waitingPlaceholder ? '' : last.content}$chunk',
+        );
         cur.messages.add(updated);
         notifyListeners();
       }
