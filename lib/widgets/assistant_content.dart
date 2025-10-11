@@ -18,20 +18,21 @@ class AssistantContent extends StatelessWidget {
   /// MarkdownStyleSheet의 모든 폰트 크기를 조절하는 헬퍼 함수
   MarkdownStyleSheet _scaleFontSizes(MarkdownStyleSheet sheet, double scale) {
     // TextStyle의 폰트 크기를 조절하는 내부 함수
-    TextStyle? scaleTextStyle(TextStyle? textStyle) {
+    TextStyle? scaleTextStyle(TextStyle? textStyle, [double weight = 1.0]) {
       if (textStyle == null || textStyle.fontSize == null) return textStyle;
-      return textStyle.copyWith(fontSize: textStyle.fontSize! * scale);
+
+      return textStyle.copyWith(fontSize: textStyle.fontSize! * scale * weight);
     }
 
     // 4. copyWith를 사용하여 각 요소의 TextStyle을 수정
     return sheet.copyWith(
       p: scaleTextStyle(sheet.p),
-      h1: scaleTextStyle(sheet.h1),
-      h2: scaleTextStyle(sheet.h2),
-      h3: scaleTextStyle(sheet.h3),
-      h4: scaleTextStyle(sheet.h4),
-      h5: scaleTextStyle(sheet.h5),
-      h6: scaleTextStyle(sheet.h6),
+      h1: scaleTextStyle(sheet.h1, 0.85),
+      h2: scaleTextStyle(sheet.h2, 0.85),
+      h3: scaleTextStyle(sheet.h3, 0.9),
+      h4: scaleTextStyle(sheet.h4, 0.9),
+      h5: scaleTextStyle(sheet.h5, 1.0),
+      h6: scaleTextStyle(sheet.h6, 1.0),
       em: scaleTextStyle(sheet.em),
       strong: scaleTextStyle(sheet.strong),
       del: scaleTextStyle(sheet.del),
