@@ -89,6 +89,7 @@ class _TopControls extends StatelessWidget {
         children: [
           if (chat.models.isNotEmpty)
             DropdownButton<LlmModel>(
+              key: const Key('model-dropdown'),
               value: chat.activeModel,
               onChanged: (m) {
                 if (m != null) chat.setActiveModel(m);

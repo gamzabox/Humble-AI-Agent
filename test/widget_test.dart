@@ -9,6 +9,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
@@ -35,8 +36,8 @@ import 'package:humble_ai_agent/services/storage_service.dart';
       if (cancel.isCancelled) break;
       // Allow cancellation to break the delay to avoid pending timers.
       if (tokenDelay == Duration.zero) {
-        // No timers in tests to avoid pending timers on dispose.
-        await Future<void>(() {});
+        // Immediate proceed without scheduling timers.
+        await Future<void>.value();
       } else {
         await Future.any([
           Future.delayed(tokenDelay),
@@ -124,7 +125,7 @@ void main() {
       () => Directory.systemTemp.createTemp('humble_agent_test_'),
     );
     final storage = StorageService(baseDir: tmpDir?.path);
-    final client = _FakeLlmClient(tokenDelay: Duration.zero);
+    final client = _BlockingClient();
     final controller = ChatController(storage: storage, client: client);
     controller.setActiveModel(
       const LlmModel(
@@ -250,6 +251,118 @@ void main() {
     expect(cfg['selectedModelId'], 'o2');
   });
 
+  testWidgets('Shift+Enter sends message', (tester) async {
+    final tmpDir = await tester.runAsync(() => Directory.systemTemp.createTemp('humble_agent_test_'));
+    final storage = StorageService(baseDir: tmpDir?.path);
+    final client = _FakeLlmClient();
+    final controller = ChatController(storage: storage, client: client);
+    controller.setActiveModel(
+      const LlmModel(id: 'm1', provider: 'openai', model: 'gpt-test', apiKey: 'k'),
+    );
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: controller,
+        child: const MaterialApp(home: ChatPage()),
+      ),
+    );
+    await tester.pump();
+
+    // Focus input and type
+    await tester.tap(find.byKey(const Key('input-field')));
+    await tester.pump();
+    await tester.enterText(find.byKey(const Key('input-field')), 'Hi');
+
+    // Simulate Shift+Enter
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.pump(const Duration(milliseconds: 100));
+
+    // Assistant response should appear
+    expect(find.text('Hello world!'), findsOneWidget);
+  });
+
+  testWidgets('Model dropdown appears when models exist', (tester) async {
+    final tmpDir = await tester.runAsync(() => Directory.systemTemp.createTemp('humble_agent_test_'));
+    final storage = StorageService(baseDir: tmpDir?.path);
+    final client = _FakeLlmClient();
+    final controller = ChatController(storage: storage, client: client);
+    await tester.runAsync(() => controller.addModel(
+          const LlmModel(id: 'o2', provider: 'openai', model: 'gpt-4o', apiKey: 'x'),
+        ));
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: controller,
+        child: const MaterialApp(home: ChatPage()),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byKey(const Key('model-dropdown')), findsOneWidget);
+  });
+
+  testWidgets('Waiting placeholder is not sent to API turns', (tester) async {
+    final tmpDir = await tester.runAsync(() => Directory.systemTemp.createTemp('humble_agent_test_'));
+    final storage = StorageService(baseDir: tmpDir?.path);
+    late List<ChatTurn> capturedTurns;
+
+    final client = _CapturingClient((turns) => capturedTurns = turns);
+    final controller = ChatController(storage: storage, client: client);
+    controller.setActiveModel(const LlmModel(id: 'm1', provider: 'openai', model: 'gpt-test', apiKey: 'k'));
+
+    // Seed with previous exchange
+    controller.current!.messages.addAll(const [
+      ChatMessage(role: 'user', content: 'Prev Q'),
+      ChatMessage(role: 'assistant', content: 'Prev A'),
+    ]);
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: controller,
+        child: const MaterialApp(home: ChatPage()),
+      ),
+    );
+    await tester.pump();
+
+    await tester.enterText(find.byKey(const Key('input-field')), 'Hi');
+    await tester.tap(find.byKey(const Key('send-button')));
+    await tester.pump();
+
+    // Turns should include only previous exchange + new user, without waiting placeholder
+    expect(capturedTurns.map((t) => t.role).toList(), ['user', 'assistant', 'user']);
+    expect(capturedTurns.last.content, 'Hi');
+  });
+
+  testWidgets('New Chat cancels in-flight request', (tester) async {
+    final tmpDir = await tester.runAsync(() => Directory.systemTemp.createTemp('humble_agent_test_'));
+    final storage = StorageService(baseDir: tmpDir?.path);
+    final client = _BlockingClient();
+    final controller = ChatController(storage: storage, client: client);
+    controller.setActiveModel(const LlmModel(id: 'm1', provider: 'openai', model: 'gpt-test', apiKey: 'k'));
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: controller,
+        child: const MaterialApp(home: ChatPage()),
+      ),
+    );
+    await tester.pump();
+
+    await tester.enterText(find.byKey(const Key('input-field')), 'Hello');
+    await tester.tap(find.byKey(const Key('send-button')));
+    await tester.pump();
+    expect(controller.sending, isTrue);
+
+    // Tap New Chat on left pane
+    await tester.tap(find.text('New Chat').first);
+    await tester.pump();
+
+    expect(controller.sending, isFalse);
+    expect(controller.current!.messages, isEmpty);
+  });
+
   testWidgets('Assistant code block renders with highlight', (tester) async {
     final tmpDir = await tester.runAsync(() => Directory.systemTemp.createTemp('humble_agent_test_'));
     final storage = StorageService(baseDir: tmpDir?.path);
@@ -357,4 +470,23 @@ void main() {
     expect(find.byKey(const Key('error-banner')), findsNothing);
     expect(find.text('OK'), findsOneWidget);
   });
+}
+
+class _CapturingClient implements LlmClient {
+  final void Function(List<ChatTurn>) onCapture;
+  _CapturingClient(this.onCapture);
+  @override
+  Stream<String> streamChat({required List<ChatTurn> turns, required LlmModel model, required CancellationToken cancel}) async* {
+    onCapture(turns);
+    yield* const Stream<String>.empty();
+  }
+}
+
+class _BlockingClient implements LlmClient {
+  @override
+  Stream<String> streamChat({required List<ChatTurn> turns, required LlmModel model, required CancellationToken cancel}) async* {
+    // Wait until cancellation without creating timers
+    await cancel.onCancel;
+    // Then complete without emitting
+  }
 }
