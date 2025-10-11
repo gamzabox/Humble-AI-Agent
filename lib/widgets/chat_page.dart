@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:flutter/cupertino.dart' as cupertino;
 import 'package:flutter_highlight/flutter_highlight.dart';
 import 'package:flutter_highlight/themes/github.dart';
 import 'package:flutter/services.dart';
@@ -15,13 +16,9 @@ class ChatPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final controller = context.watch<ChatController>();
-    return Scaffold(
-      appBar: null,
-      body: const _SplitLayout(),
-    );
+    return Scaffold(appBar: null, body: const _SplitLayout());
   }
 }
-
 
 class _SplitLayout extends StatefulWidget {
   const _SplitLayout();
@@ -95,10 +92,12 @@ class _TopControls extends StatelessWidget {
                 if (m != null) chat.setActiveModel(m);
               },
               items: chat.models
-                  .map((m) => DropdownMenuItem(
-                        value: m,
-                        child: Text('${m.model} (${m.provider})'),
-                      ))
+                  .map(
+                    (m) => DropdownMenuItem(
+                      value: m,
+                      child: Text('${m.model} (${m.provider})'),
+                    ),
+                  )
                   .toList(),
             ),
           const Spacer(),
@@ -132,23 +131,27 @@ class _SessionList extends StatelessWidget {
           },
         ),
         for (var i = 0; i < controller.sessions.length; i++)
-          Builder(builder: (context) {
-            final s = controller.sessions[i];
-            final selected = controller.current == s;
-            return ListTile(
-              title: Text(
-                s.title.isEmpty ? 'New Chat' : s.title,
-                style: TextStyle(fontWeight: selected ? FontWeight.bold : FontWeight.normal),
-              ),
-              selected: selected,
-              onTap: () => controller.selectSession(s),
-              trailing: IconButton(
-                key: Key('delete-session-$i'),
-                icon: const Icon(Icons.delete_outline),
-                onPressed: () => controller.deleteSessionAt(i),
-              ),
-            );
-          }),
+          Builder(
+            builder: (context) {
+              final s = controller.sessions[i];
+              final selected = controller.current == s;
+              return ListTile(
+                title: Text(
+                  s.title.isEmpty ? 'New Chat' : s.title,
+                  style: TextStyle(
+                    fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                  ),
+                ),
+                selected: selected,
+                onTap: () => controller.selectSession(s),
+                trailing: IconButton(
+                  key: Key('delete-session-$i'),
+                  icon: const Icon(Icons.delete_outline),
+                  onPressed: () => controller.deleteSessionAt(i),
+                ),
+              );
+            },
+          ),
       ],
     );
   }
@@ -192,14 +195,19 @@ class _ChatViewState extends State<_ChatView> {
         itemCount: messages.length,
         itemBuilder: (context, index) {
           final m = messages[index];
-          final align = m.role == 'user' ? CrossAxisAlignment.end : CrossAxisAlignment.start;
+          final align = m.role == 'user'
+              ? CrossAxisAlignment.end
+              : CrossAxisAlignment.start;
           if (m.role == 'assistant') {
             // Assistant answers: no bubble, render content directly with light spacing.
             return Column(
               crossAxisAlignment: align,
               children: [
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
                   child: _AssistantContent(m.content),
                 ),
               ],
@@ -269,21 +277,47 @@ class _ModelSettingsViewState extends State<_ModelSettingsView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Add Model', style: TextStyle(fontWeight: FontWeight.w600)),
+          const Text(
+            'Add Model',
+            style: TextStyle(fontWeight: FontWeight.w600),
+          ),
           const SizedBox(height: 8),
           Row(
             children: [
-              Radio<String>(value: 'openai', groupValue: provider, onChanged: (v) => setState(() => provider = v!)),
+              Radio<String>(
+                value: 'openai',
+                groupValue: provider,
+                onChanged: (v) => setState(() => provider = v!),
+              ),
               const Text('OpenAI'),
               const SizedBox(width: 12),
-              Radio<String>(value: 'ollama', groupValue: provider, onChanged: (v) => setState(() => provider = v!)),
+              Radio<String>(
+                value: 'ollama',
+                groupValue: provider,
+                onChanged: (v) => setState(() => provider = v!),
+              ),
               const Text('Ollama'),
             ],
           ),
-          TextField(decoration: const InputDecoration(labelText: 'Model'), controller: modelCtrl),
-          TextField(decoration: const InputDecoration(labelText: 'API Key'), controller: apiKeyCtrl, enabled: provider == 'openai'),
-          TextField(decoration: const InputDecoration(labelText: 'Base URL'), controller: baseUrlCtrl, enabled: provider == 'ollama'),
-          if (error != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(error!, style: const TextStyle(color: Colors.red))),
+          TextField(
+            decoration: const InputDecoration(labelText: 'Model'),
+            controller: modelCtrl,
+          ),
+          TextField(
+            decoration: const InputDecoration(labelText: 'API Key'),
+            controller: apiKeyCtrl,
+            enabled: provider == 'openai',
+          ),
+          TextField(
+            decoration: const InputDecoration(labelText: 'Base URL'),
+            controller: baseUrlCtrl,
+            enabled: provider == 'ollama',
+          ),
+          if (error != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(error!, style: const TextStyle(color: Colors.red)),
+            ),
           const SizedBox(height: 12),
           Align(
             alignment: Alignment.centerRight,
@@ -294,11 +328,17 @@ class _ModelSettingsViewState extends State<_ModelSettingsView> {
                   provider: provider,
                   model: modelCtrl.text.trim(),
                   apiKey: provider == 'openai' ? apiKeyCtrl.text.trim() : null,
-                  baseUrl: provider == 'ollama' ? baseUrlCtrl.text.trim() : null,
+                  baseUrl: provider == 'ollama'
+                      ? baseUrlCtrl.text.trim()
+                      : null,
                 );
                 final ok = await chat.addModel(model, activate: true);
                 if (!ok) {
-                  setState(() => error = provider == 'openai' ? 'Model and API Key required' : 'Model and Base URL required');
+                  setState(
+                    () => error = provider == 'openai'
+                        ? 'Model and API Key required'
+                        : 'Model and Base URL required',
+                  );
                   return;
                 }
               },
@@ -307,15 +347,29 @@ class _ModelSettingsViewState extends State<_ModelSettingsView> {
           ),
           const SizedBox(height: 12),
           const Divider(),
-          const Text('Existing Models', style: TextStyle(fontWeight: FontWeight.w600)),
-          ...chat.models.map((m) => ListTile(
-                title: Text('${m.model} (${m.provider})'),
-                trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+          const Text(
+            'Existing Models',
+            style: TextStyle(fontWeight: FontWeight.w600),
+          ),
+          ...chat.models.map(
+            (m) => ListTile(
+              title: Text('${m.model} (${m.provider})'),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
                   if (chat.activeModel?.id != m.id)
-                    TextButton(onPressed: () => chat.setActiveModel(m), child: const Text('Select')),
-                  IconButton(onPressed: () => chat.removeModel(m.id), icon: const Icon(Icons.delete_outline)),
-                ]),
-              )),
+                    TextButton(
+                      onPressed: () => chat.setActiveModel(m),
+                      child: const Text('Select'),
+                    ),
+                  IconButton(
+                    onPressed: () => chat.removeModel(m.id),
+                    icon: const Icon(Icons.delete_outline),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -386,7 +440,10 @@ class _AboutView extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: const [
-        Text('Humble AI Agent', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+        Text(
+          'Humble AI Agent',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+        ),
         SizedBox(height: 8),
         Text('Version: 1.0.0+1'),
         Text('Developer: gamzabox'),
@@ -442,7 +499,8 @@ class _InputBarState extends State<_InputBar> {
             ),
           Shortcuts(
             shortcuts: <ShortcutActivator, Intent>{
-              const SingleActivator(LogicalKeyboardKey.enter, shift: true): const SendMessageIntent(),
+              const SingleActivator(LogicalKeyboardKey.enter, shift: true):
+                  const SendMessageIntent(),
             },
             child: Actions(
               actions: <Type, Action<Intent>>{
@@ -499,36 +557,35 @@ class _AssistantContent extends StatelessWidget {
   const _AssistantContent(this.content);
 
   MarkdownStyleSheet _mdStyle(BuildContext context) {
-    final theme = Theme.of(context);
-    return MarkdownStyleSheet.fromTheme(theme).copyWith(
-      horizontalRuleDecoration: const BoxDecoration(
-        border: Border(top: BorderSide(width: 0.5, color: Color(0xFFd0d7de))),
-      ),
-      tableBorder: TableBorder.all(color: const Color(0xFFd0d7de), width: 1),
-      tableHead: const TextStyle(fontWeight: FontWeight.w600),
-      tableCellsPadding: const EdgeInsets.all(8),
-    );
+    // Base Cupertino style to align with macOS-like appearance
+    final cuTheme = cupertino.CupertinoTheme.of(context);
+    return MarkdownStyleSheet.fromCupertinoTheme(cuTheme);
   }
 
   @override
   Widget build(BuildContext context) {
+    final style = _mdStyle(context);
     final fence = '```';
     final idx = content.indexOf(fence);
-    if (idx == -1) return MarkdownBody(data: content);
+    if (idx == -1) return MarkdownBody(data: content, styleSheet: style);
     final end = content.indexOf(fence, idx + fence.length);
-    if (end == -1) return MarkdownBody(data: content);
+    if (end == -1) return MarkdownBody(data: content, styleSheet: style);
     final before = content.substring(0, idx);
     final infoLineEnd = content.indexOf('\n', idx + fence.length);
-    final info = infoLineEnd != -1 ? content.substring(idx + fence.length, infoLineEnd).trim() : '';
-    final codeStart = (infoLineEnd != -1) ? infoLineEnd + 1 : idx + fence.length;
+    final info = infoLineEnd != -1
+        ? content.substring(idx + fence.length, infoLineEnd).trim()
+        : '';
+    final codeStart = (infoLineEnd != -1)
+        ? infoLineEnd + 1
+        : idx + fence.length;
     final code = content.substring(codeStart, end);
     final after = content.substring(end + fence.length);
 
-    final style = _mdStyle(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (before.trim().isNotEmpty) MarkdownBody(data: before.trim(), styleSheet: style),
+        if (before.trim().isNotEmpty)
+          MarkdownBody(data: before.trim(), styleSheet: style),
         Container(
           key: const Key('code-block'),
           padding: const EdgeInsets.all(8),
@@ -538,7 +595,8 @@ class _AssistantContent extends StatelessWidget {
             language: info.isEmpty ? 'plaintext' : info,
           ),
         ),
-        if (after.trim().isNotEmpty) MarkdownBody(data: after.trim(), styleSheet: style),
+        if (after.trim().isNotEmpty)
+          MarkdownBody(data: after.trim(), styleSheet: style),
       ],
     );
   }
@@ -577,7 +635,10 @@ class _SelectableHighlight extends StatelessWidget {
     for (final n in nodes) {
       walk(n, spans);
     }
-    return TextSpan(children: spans, style: const TextStyle(fontFamily: 'monospace', fontSize: 13));
+    return TextSpan(
+      children: spans,
+      style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+    );
   }
 
   @override
