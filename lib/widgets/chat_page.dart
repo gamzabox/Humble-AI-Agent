@@ -6,6 +6,7 @@ import 'package:flutter_highlight/flutter_highlight.dart';
 import 'package:flutter_highlight/themes/github.dart';
 import 'package:flutter/services.dart';
 import 'package:highlight/highlight.dart' as hl;
+import 'package:markdown/markdown.dart' as md;
 import '../services/llm_client.dart';
 
 import '../controllers/chat_controller.dart';
@@ -566,6 +567,7 @@ class _AssistantContent extends StatelessWidget {
   Widget build(BuildContext context) {
     final style = _mdStyle(context);
     final fence = '```';
+    final builders = {'code': _InlineCodeBuilder()};
     List<Widget> children = [];
     int cursor = 0;
     while (true) {
@@ -573,7 +575,13 @@ class _AssistantContent extends StatelessWidget {
       if (start == -1) {
         final tail = content.substring(cursor);
         if (tail.trim().isNotEmpty) {
-          children.add(MarkdownBody(data: tail.trim(), styleSheet: style));
+          children.add(
+            MarkdownBody(
+              data: tail.trim(),
+              styleSheet: style,
+              builders: builders,
+            ),
+          );
         }
         break;
       }
@@ -582,7 +590,13 @@ class _AssistantContent extends StatelessWidget {
       if (start > cursor) {
         final before = content.substring(cursor, start);
         if (before.trim().isNotEmpty) {
-          children.add(MarkdownBody(data: before.trim(), styleSheet: style));
+          children.add(
+            MarkdownBody(
+              data: before.trim(),
+              styleSheet: style,
+              builders: builders,
+            ),
+          );
         }
       }
 
@@ -599,7 +613,13 @@ class _AssistantContent extends StatelessWidget {
         // No newline; treat rest as markdown
         final tail = content.substring(start);
         if (tail.trim().isNotEmpty) {
-          children.add(MarkdownBody(data: tail.trim(), styleSheet: style));
+          children.add(
+            MarkdownBody(
+              data: tail.trim(),
+              styleSheet: style,
+              builders: builders,
+            ),
+          );
         }
         break;
       }
@@ -621,11 +641,23 @@ class _AssistantContent extends StatelessWidget {
         }
         if (endFence == -1) {
           final tail = content.substring(lineStart);
-          children.add(MarkdownBody(data: tail.trim(), styleSheet: style));
+          children.add(
+            MarkdownBody(
+              data: tail.trim(),
+              styleSheet: style,
+              builders: builders,
+            ),
+          );
           break;
         } else {
           final block = content.substring(lineStart, endFence + fence.length);
-          children.add(MarkdownBody(data: block.trim(), styleSheet: style));
+          children.add(
+            MarkdownBody(
+              data: block.trim(),
+              styleSheet: style,
+              builders: builders,
+            ),
+          );
           cursor = endFence + fence.length;
           continue;
         }
@@ -639,7 +671,7 @@ class _AssistantContent extends StatelessWidget {
         children.add(
           Container(
             padding: const EdgeInsets.all(8),
-            color: Colors.grey.shade100,
+            color: Colors.grey.shade200,
             child: _SelectableHighlight(
               code: code,
               language: info.isEmpty ? 'plaintext' : info,
@@ -652,7 +684,7 @@ class _AssistantContent extends StatelessWidget {
         children.add(
           Container(
             padding: const EdgeInsets.all(8),
-            color: Colors.grey.shade100,
+            color: Colors.grey.shade200,
             child: _SelectableHighlight(
               code: code,
               language: info.isEmpty ? 'plaintext' : info,
@@ -715,5 +747,26 @@ class _SelectableHighlight extends StatelessWidget {
     final nodes = res.nodes ?? const <hl.Node>[];
     final span = _buildSpan(nodes);
     return SelectableText.rich(span);
+  }
+}
+
+class _InlineCodeBuilder extends MarkdownElementBuilder {
+  @override
+  Widget? visitElementAfter(md.Element element, TextStyle? preferredStyle) {
+    if (element.tag == 'code') {
+      final text = element.textContent;
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade200,
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Text(
+          text,
+          style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+        ),
+      );
+    }
+    return null;
   }
 }
