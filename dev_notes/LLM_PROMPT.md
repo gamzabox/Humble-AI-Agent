@@ -10,4 +10,18 @@ REQUIREMENTS.md 파일에 기술된 요구사항을 파악해 LLM 채팅 프로�
 # Theme 변경
 macos ui 를 적용해 앱의 전체 테마를 변경
 
+# 대화 화면 스타일 조정
+- 대화 화면에 전반적으로 github 스타일 적용 필요
+- horizon line 두깨를 얇게 만들어야 함
+- Code block 배경색을 light gray 로 변경
+- Table style 을 github 스타일로 변경
+
+# 설정 화면 레이아웃 조정
+- 설정 다이얼로그 레이아웃 조정이 필요함
+- 설정 다이얼로그의 폭을 키우고 왼쪽과 오른쪽으로 split
+- 왼쪽에는 설정 항목 리스트가 보여지고 설정항목을 선택하면 오른쪽 화면에 설정 화면이 보여짐
+- 설정 항목은 다음과 같음
+  - Models: 현재 구현된 Model Settings 화면을 그대로 사용
+  - About: 앱 타이틀, 버전, 개발자(gamzabox) 가 노출됨
+- 설정 다이얼로그 우측 하단에 Close 버튼을 제공
 

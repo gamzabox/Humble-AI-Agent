@@ -107,7 +107,7 @@ class _TopControls extends StatelessWidget {
             tooltip: 'Settings',
             onPressed: () => showDialog(
               context: context,
-              builder: (_) => const _ModelSettingsDialog(),
+              builder: (_) => const _SettingsDialog(),
             ),
           ),
         ],
@@ -241,13 +241,13 @@ class _InputBar extends StatefulWidget {
   State<_InputBar> createState() => _InputBarState();
 }
 
-class _ModelSettingsDialog extends StatefulWidget {
-  const _ModelSettingsDialog();
+class _ModelSettingsView extends StatefulWidget {
+  const _ModelSettingsView();
   @override
-  State<_ModelSettingsDialog> createState() => _ModelSettingsDialogState();
+  State<_ModelSettingsView> createState() => _ModelSettingsViewState();
 }
 
-class _ModelSettingsDialogState extends State<_ModelSettingsDialog> {
+class _ModelSettingsViewState extends State<_ModelSettingsView> {
   String provider = 'openai';
   final modelCtrl = TextEditingController();
   final apiKeyCtrl = TextEditingController();
@@ -265,64 +265,131 @@ class _ModelSettingsDialogState extends State<_ModelSettingsDialog> {
   @override
   Widget build(BuildContext context) {
     final chat = context.watch<ChatController>();
-    return AlertDialog(
-      title: const Text('Model Settings'),
-      content: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Add Model'),
-            Row(
-              children: [
-                Radio<String>(value: 'openai', groupValue: provider, onChanged: (v) => setState(() => provider = v!)),
-                const Text('OpenAI'),
-                const SizedBox(width: 12),
-                Radio<String>(value: 'ollama', groupValue: provider, onChanged: (v) => setState(() => provider = v!)),
-                const Text('Ollama'),
-              ],
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Add Model', style: TextStyle(fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Radio<String>(value: 'openai', groupValue: provider, onChanged: (v) => setState(() => provider = v!)),
+              const Text('OpenAI'),
+              const SizedBox(width: 12),
+              Radio<String>(value: 'ollama', groupValue: provider, onChanged: (v) => setState(() => provider = v!)),
+              const Text('Ollama'),
+            ],
+          ),
+          TextField(decoration: const InputDecoration(labelText: 'Model'), controller: modelCtrl),
+          TextField(decoration: const InputDecoration(labelText: 'API Key'), controller: apiKeyCtrl, enabled: provider == 'openai'),
+          TextField(decoration: const InputDecoration(labelText: 'Base URL'), controller: baseUrlCtrl, enabled: provider == 'ollama'),
+          if (error != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(error!, style: const TextStyle(color: Colors.red))),
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerRight,
+            child: ElevatedButton(
+              onPressed: () async {
+                final model = LlmModel(
+                  id: '${provider}:${modelCtrl.text.trim()}',
+                  provider: provider,
+                  model: modelCtrl.text.trim(),
+                  apiKey: provider == 'openai' ? apiKeyCtrl.text.trim() : null,
+                  baseUrl: provider == 'ollama' ? baseUrlCtrl.text.trim() : null,
+                );
+                final ok = await chat.addModel(model, activate: true);
+                if (!ok) {
+                  setState(() => error = provider == 'openai' ? 'Model and API Key required' : 'Model and Base URL required');
+                  return;
+                }
+              },
+              child: const Text('Add'),
             ),
-            TextField(decoration: const InputDecoration(labelText: 'Model'), controller: modelCtrl),
-            TextField(decoration: const InputDecoration(labelText: 'API Key'), controller: apiKeyCtrl, enabled: provider == 'openai'),
-            TextField(decoration: const InputDecoration(labelText: 'Base URL'), controller: baseUrlCtrl, enabled: provider == 'ollama'),
-            if (error != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(error!, style: const TextStyle(color: Colors.red))),
-            const SizedBox(height: 12),
-            const Divider(),
-            const Text('Existing Models'),
-            ...chat.models.map((m) => ListTile(
-                  title: Text('${m.model} (${m.provider})'),
-                  trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                    if (chat.activeModel?.id != m.id)
-                      TextButton(onPressed: () => chat.setActiveModel(m), child: const Text('Select')),
-                    IconButton(onPressed: () => chat.removeModel(m.id), icon: const Icon(Icons.delete_outline)),
-                  ]),
-                )),
-            const SizedBox(height: 12),
-            const Divider(),
-            const Text('About'),
-            const Text('Humble AI Agent\nAuthor: gamzabox\nVersion: 1.0.0+1'),
+          ),
+          const SizedBox(height: 12),
+          const Divider(),
+          const Text('Existing Models', style: TextStyle(fontWeight: FontWeight.w600)),
+          ...chat.models.map((m) => ListTile(
+                title: Text('${m.model} (${m.provider})'),
+                trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                  if (chat.activeModel?.id != m.id)
+                    TextButton(onPressed: () => chat.setActiveModel(m), child: const Text('Select')),
+                  IconButton(onPressed: () => chat.removeModel(m.id), icon: const Icon(Icons.delete_outline)),
+                ]),
+              )),
+        ],
+      ),
+    );
+  }
+}
+
+class _SettingsDialog extends StatefulWidget {
+  const _SettingsDialog();
+  @override
+  State<_SettingsDialog> createState() => _SettingsDialogState();
+}
+
+class _SettingsDialogState extends State<_SettingsDialog> {
+  int selected = 0; // 0: Models, 1: About
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Settings'),
+      content: SizedBox(
+        width: 720,
+        height: 480,
+        child: Row(
+          children: [
+            SizedBox(
+              width: 200,
+              child: ListView(
+                children: [
+                  ListTile(
+                    selected: selected == 0,
+                    title: const Text('Models'),
+                    onTap: () => setState(() => selected = 0),
+                  ),
+                  ListTile(
+                    selected: selected == 1,
+                    title: const Text('About'),
+                    onTap: () => setState(() => selected = 1),
+                  ),
+                ],
+              ),
+            ),
+            const VerticalDivider(width: 1),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: selected == 0
+                    ? const _ModelSettingsView()
+                    : const _AboutView(),
+              ),
+            ),
           ],
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
-        ElevatedButton(
-          onPressed: () async {
-            final model = LlmModel(
-              id: '${provider}:${modelCtrl.text.trim()}',
-              provider: provider,
-              model: modelCtrl.text.trim(),
-              apiKey: provider == 'openai' ? apiKeyCtrl.text.trim() : null,
-              baseUrl: provider == 'ollama' ? baseUrlCtrl.text.trim() : null,
-            );
-            final ok = await chat.addModel(model, activate: true);
-            if (!ok) {
-              setState(() => error = provider == 'openai' ? 'Model and API Key required' : 'Model and Base URL required');
-              return;
-            }
-            if (context.mounted) Navigator.pop(context);
-          },
-          child: const Text('Add'),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Close'),
         ),
+      ],
+    );
+  }
+}
+
+class _AboutView extends StatelessWidget {
+  const _AboutView();
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: const [
+        Text('Humble AI Agent', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+        SizedBox(height: 8),
+        Text('Version: 1.0.0+1'),
+        Text('Developer: gamzabox'),
       ],
     );
   }
