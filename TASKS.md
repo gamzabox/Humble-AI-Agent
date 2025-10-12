@@ -28,3 +28,8 @@
 
 
 - [x] Session list items show on a single line with ellipsis
+
+## 2025-10-12
+- [x] Storage abstraction to support multiple backends
+- [x] IndexedDB persistence for web config/sessions
+- [x] Tests: storage abstraction and web persistence

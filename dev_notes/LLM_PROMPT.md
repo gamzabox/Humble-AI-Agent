@@ -37,3 +37,8 @@ macos ui 를 적용해 앱의 전체 테마를 변경
 # 세션 리스트 삭제 버튼 제거
 - 세션 리스트의 삭제 버튼을 제거하고 그 대신 마우스 오른쪽 버튼 클릭시 Context menu 가 뜨고 여기서 Delete 를 선택시 삭제 되도록 수정
 - 세션 리스트를 모두 삭제 할 경우 자동으로 New Session 생성
+
+# 웹 스로리지 지원
+- 웹앱 으로도 정상 동작 하도록 config.json 과 sessions.json 을 브라우저를 통해 저장하는 기능 구현 필요
+- 파일 스토리지를 추상화 하고 IndexedDB 를 통해 config.json 과 sessions.json 을 key 로 파일 데이터를 value 로 저장하는 기능 추가
+

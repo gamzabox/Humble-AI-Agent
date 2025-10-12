@@ -84,14 +84,24 @@ class _CapturingClient implements LlmClient {
   }
 }
 
+Future<ChatController> _createController(
+  WidgetTester tester,
+  LlmClient client,
+) async {
+  late ChatController controller;
+  await tester.runAsync(() async {
+    final dir = await Directory.systemTemp.createTemp('humble_agent_test_');
+    final storage = StorageService(baseDir: dir.path);
+    controller = ChatController(storage: storage, client: client);
+    await controller.ready;
+  });
+  return controller;
+}
+
 void main() {
   testWidgets('Send streams response and finalizes UI', (tester) async {
-    final tmpDir = await tester.runAsync(
-      () => Directory.systemTemp.createTemp('humble_agent_test_'),
-    );
-    final storage = StorageService(baseDir: tmpDir?.path);
     final client = _FakeLlmClient();
-    final controller = ChatController(storage: storage, client: client);
+    final controller = await _createController(tester, client);
     controller.setActiveModel(
       const LlmModel(
         id: 'm1',
@@ -129,12 +139,8 @@ void main() {
   });
 
   testWidgets('Cancel rolls back pending exchange', (tester) async {
-    final tmpDir = await tester.runAsync(
-      () => Directory.systemTemp.createTemp('humble_agent_test_'),
-    );
-    final storage = StorageService(baseDir: tmpDir?.path);
     final client = _BlockingClient();
-    final controller = ChatController(storage: storage, client: client);
+    final controller = await _createController(tester, client);
     controller.setActiveModel(
       const LlmModel(
         id: 'm1',
@@ -165,12 +171,8 @@ void main() {
   });
 
   testWidgets('Initial split layout ~30/70 and session title', (tester) async {
-    final tmpDir = await tester.runAsync(
-      () => Directory.systemTemp.createTemp('humble_agent_test_'),
-    );
-    final storage = StorageService(baseDir: tmpDir?.path);
     final client = _FakeLlmClient(tokensToEmit: const ['A', 'B', 'C']);
-    final controller = ChatController(storage: storage, client: client);
+    final controller = await _createController(tester, client);
     controller.setActiveModel(
       const LlmModel(
         id: 'm1',
@@ -235,6 +237,7 @@ void main() {
       baseUrl: 'http://localhost:11434',
     );
     expect(await controller.addModel(ollamaValid, activate: false), isTrue);
+    expect(controller.models.length, 2);
 
     final cfg = await storage.loadConfig();
     expect((cfg['models'] as List).length, 2);
@@ -242,12 +245,8 @@ void main() {
   });
 
   testWidgets('Shift+Enter sends message', (tester) async {
-    final tmpDir = await tester.runAsync(
-      () => Directory.systemTemp.createTemp('humble_agent_test_'),
-    );
-    final storage = StorageService(baseDir: tmpDir?.path);
     final client = _FakeLlmClient();
-    final controller = ChatController(storage: storage, client: client);
+    final controller = await _createController(tester, client);
     controller.setActiveModel(
       const LlmModel(
         id: 'm1',
@@ -277,12 +276,8 @@ void main() {
   });
 
   testWidgets('Model dropdown appears when models exist', (tester) async {
-    final tmpDir = await tester.runAsync(
-      () => Directory.systemTemp.createTemp('humble_agent_test_'),
-    );
-    final storage = StorageService(baseDir: tmpDir?.path);
     final client = _FakeLlmClient();
-    final controller = ChatController(storage: storage, client: client);
+    final controller = await _createController(tester, client);
     await tester.runAsync(
       () => controller.addModel(
         const LlmModel(
@@ -305,13 +300,9 @@ void main() {
   });
 
   testWidgets('Waiting placeholder is not sent to API turns', (tester) async {
-    final tmpDir = await tester.runAsync(
-      () => Directory.systemTemp.createTemp('humble_agent_test_'),
-    );
-    final storage = StorageService(baseDir: tmpDir?.path);
     late List<ChatTurn> capturedTurns;
     final client = _CapturingClient((turns) => capturedTurns = turns);
-    final controller = ChatController(storage: storage, client: client);
+    final controller = await _createController(tester, client);
     controller.setActiveModel(
       const LlmModel(
         id: 'm1',
@@ -344,12 +335,8 @@ void main() {
   });
 
   testWidgets('New Chat cancels in-flight request', (tester) async {
-    final tmpDir = await tester.runAsync(
-      () => Directory.systemTemp.createTemp('humble_agent_test_'),
-    );
-    final storage = StorageService(baseDir: tmpDir?.path);
     final client = _BlockingClient();
-    final controller = ChatController(storage: storage, client: client);
+    final controller = await _createController(tester, client);
     controller.setActiveModel(
       const LlmModel(
         id: 'm1',
@@ -381,12 +368,8 @@ void main() {
   ) async {
     // 목적: 세션 목록에서 선택 항목은 굵게 표시되고 인라인 삭제 버튼이 제거되었는지 확인합니다.
     // 또한 모든 세션 삭제 시 자동으로 새 세션이 생성되는지 검증합니다.
-    final tmpDir = await tester.runAsync(
-      () => Directory.systemTemp.createTemp('humble_agent_test_'),
-    );
-    final storage = StorageService(baseDir: tmpDir?.path);
     final client = _FakeLlmClient();
-    final controller = ChatController(storage: storage, client: client);
+    final controller = await _createController(tester, client);
     controller.setActiveModel(
       const LlmModel(
         id: 'm1',
@@ -438,13 +421,9 @@ void main() {
     expect(controller.sessions.length, 1);
   });
   testWidgets('Error banner with Retry resends last prompt', (tester) async {
-    final tmpDir = await tester.runAsync(
-      () => Directory.systemTemp.createTemp('humble_agent_test_'),
-    );
-    final storage = StorageService(baseDir: tmpDir?.path);
     final client = _FlakyLlmClient(tokenDelay: Duration.zero)
       ..tokensToEmit = const ['OK'];
-    final controller = ChatController(storage: storage, client: client);
+    final controller = await _createController(tester, client);
     controller.setActiveModel(
       const LlmModel(
         id: 'm1',
