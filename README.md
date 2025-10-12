@@ -58,6 +58,7 @@ flutter config --enable-linux-desktop     # Linux
 ```bash
 flutter run -d windows   # Windows
 flutter run -d linux     # Linux
+flutter run -d web-server --web-hostname 0.0.0.0 --web-port 3000  # Web
 ```
 
 앱 내 모델/키 설정
